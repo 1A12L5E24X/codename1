@@ -11,7 +11,7 @@ from dotfx import dither as dz
 from dotfx import halftone as ht
 from dotfx.cli import main
 from dotfx.color import parse_color, parse_palette
-from dotfx.pipeline import render, to_uint8
+from dotfx.pipeline import render
 from dotfx.presets import PRESETS, load_preset, to_toml
 from dotfx.settings import SPOTS, Settings
 

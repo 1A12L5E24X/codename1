@@ -24,7 +24,6 @@ def fit_resize(img: np.ndarray, tw: int, th: int) -> np.ndarray:
 
 
 def terminal_preview(img: np.ndarray, max_width: int = 0, max_height: int = 0, stream=sys.stdout) -> None:
-    from PIL import Image
 
     if img.dtype != np.uint8:
         img = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)

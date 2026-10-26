@@ -154,6 +154,19 @@ def halftone_layers(img: np.ndarray, s: Settings, seed: int) -> list[Layer]:
         plate_rng = np.random.default_rng(s.seed + 101)
         for chan, ang, ink in zip(ht.rgb_to_cmyk(img, s.gcr), angles, inks):
             layers.append(Layer(plate(chan, ang, plate_rng), ink, "multiply"))
+    elif s.mode == "duotone":
+        dark = 1 - lightness(img, s.channel)
+        plate_rng = np.random.default_rng(s.seed + 303)
+        ink2 = parse_color(s.ink2)
+        ink = parse_color(s.ink)
+        if ink is None or ink2 is None:
+            raise ValueError("duotone inks can't be 'none'")
+        # Second ink carries the whole tonal range lightly; the first ink only
+        # comes in for the shadows, like a classic duotone curve pair.
+        light = plate(np.clip(dark * 0.85, 0, 1), s.angle + 30, plate_rng)
+        shadow = plate(smoothstep(0.3, 1.0, dark), s.angle, plate_rng)
+        layers.append(Layer(light, np.array(ink2, np.float32), "multiply"))
+        layers.append(Layer(shadow, np.array(ink, np.float32), "multiply"))
     elif s.mode == "rgb":
         angles = ht.parse_angles(s.angles, 3, s.angle)
         plate_rng = np.random.default_rng(s.seed + 202)

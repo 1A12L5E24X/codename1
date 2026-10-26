@@ -35,6 +35,7 @@ STEPS = {
 SUGGEST = {
     "ink": ["#111111", "#3a3a3c", "sky", "riso-pink", "riso-blue", "riso-teal", "red", "navy",
             "phosphor", "amber", "#e8f0ff", "white"],
+    "ink2": ["riso-pink", "riso-yellow", "riso-teal", "orange", "#ffb000", "cyan", "magenta"],
     "paper": ["#ffffff", "#f6f5f1", "cream", "newsprint", "#0b0b0c", "black", "blueprint", "none"],
     "palette": list(PALETTES),
     "angles": ["15 75 0 45", "105 75 90 15", "0 0 0 0", "15 45 75"],

@@ -186,7 +186,6 @@ def output_path(src: Path, args, settings: Settings, multiple: bool) -> Path:
 
 def side_by_side(original: np.ndarray, result: np.ndarray) -> np.ndarray:
     from .ops import resize
-    from .pipeline import prepare
 
     h, w = result.shape[:2]
     orig = original.astype(np.float32) / 255.0 if original.dtype == np.uint8 else original
@@ -387,8 +386,6 @@ def cmd_gallery(args) -> int:
         s.width = tile_w * 2
         s.height = 0
         s.scale = 1.0
-        s.cell = s.cell * 1.5
-        s.pixel = max(1, round(s.pixel * 1.5))
         out = to_uint8(render(img, s))
         if out.shape[2] == 4:
             out = out[..., :3]

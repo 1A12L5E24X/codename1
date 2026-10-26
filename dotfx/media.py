@@ -48,6 +48,16 @@ def load_image(path: Path) -> np.ndarray:
 
     with Image.open(path) as im:
         im = ImageOps.exif_transpose(im)
+        if im.mode in ("I;16", "I;16B", "I;16L", "I", "F"):
+            # High bit depth grayscale: keep the precision as float RGB in 0..1.
+            a = np.asarray(im, dtype=np.float32)
+            if im.mode.startswith("I;16"):
+                a = a / 65535.0
+            elif im.mode == "I":
+                a = a / (65535.0 if a.max() > 255 else 255.0)
+            elif a.max() > 1.0:
+                a = a / 255.0
+            return np.repeat(np.clip(a, 0, 1)[..., None], 3, axis=2)
         im = im.convert("RGBA" if "A" in im.getbands() or im.mode == "P" else "RGB")
         return np.asarray(im)
 

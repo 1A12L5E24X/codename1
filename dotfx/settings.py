@@ -11,7 +11,7 @@ def opt(default, help: str, group: str, choices=None, metavar=None):
 
 
 EFFECTS = ("halftone", "dither")
-MODES = ("mono", "color", "cmyk", "rgb", "palette", "gray")
+MODES = ("mono", "color", "cmyk", "rgb", "duotone", "palette", "gray")
 SPOTS = ("euclid", "dot", "square", "diamond", "line", "ellipse", "cross", "ring", "wave", "grid")
 ALGORITHMS = (
     "threshold", "random", "bayer2", "bayer4", "bayer8", "bayer16", "cluster4", "cluster8",
@@ -29,6 +29,7 @@ class Settings:
         "mono",
         "Color mode. mono: ink on paper. color: dots keep the photo's colors. "
         "cmyk: four rotated process screens (halftone). rgb: additive channel screens. "
+        "duotone: shadows in --ink plus a full-range --ink2 plate (halftone). "
         "palette: dither to --palette (dither). gray: --levels shades between ink and paper.",
         "effect", MODES,
     )
@@ -68,6 +69,7 @@ class Settings:
 
     # --- colors -------------------------------------------------------------
     ink: str = opt("#111111", "Ink color (name, #hex or r,g,b).", "colors", metavar="COLOR")
+    ink2: str = opt("riso-pink", "Second ink for duotone (prints the midtones).", "colors", metavar="COLOR")
     paper: str = opt("#ffffff", "Paper color, or 'none' for a transparent background.", "colors", metavar="COLOR")
     palette: str = opt("bw", "Palette for --mode palette: a name or a list like '#000 #f80 #fff'.", "colors", metavar="PAL")
     colors: int = opt(8, "Number of colors picked from the image for dither --mode color.", "colors")
@@ -145,8 +147,8 @@ class Settings:
             raise ValueError("levels must be >= 2")
         if self.effect == "halftone" and self.mode == "palette":
             raise ValueError("palette mode is for the dither effect; use mono/color/cmyk/rgb")
-        if self.effect == "dither" and self.mode == "cmyk":
-            raise ValueError("cmyk mode is for the halftone effect")
+        if self.effect == "dither" and self.mode in ("cmyk", "duotone"):
+            raise ValueError(f"{self.mode} mode is for the halftone effect")
 
 
 def coerce(f, value):

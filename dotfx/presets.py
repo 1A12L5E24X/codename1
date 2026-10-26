@@ -49,6 +49,15 @@ PRESETS: dict[str, tuple[str, dict]] = {
             ink_opacity=0.92, grain=0.5, speckle=0.5, contrast=1.2,
         ),
     ),
+    "riso-duo": (
+        "Two-color risograph: blue shadows over a pink plate",
+        dict(
+            effect="halftone", mode="duotone", cell=7, angle=15, spot="euclid",
+            ink="riso-blue", ink2="riso-pink", paper="#f6efd9", roughness=0.35,
+            ink_noise=0.3, ink_opacity=0.9, misregister=1.2, grain=0.45, speckle=0.4,
+            contrast=1.15,
+        ),
+    ),
     "color-dots": (
         "Dots in the photo's own colors on black, like an LED sign",
         dict(effect="halftone", mode="color", cell=10, spot="dot", angle=0, paper="#0b0b0c", saturation=1.2),

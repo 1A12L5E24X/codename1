@@ -128,7 +128,7 @@ class Screen:
                 src = resize(img, ww, hh, "box")
                 cx = cx * (ww / img.shape[1])
                 cy = cy * (hh / img.shape[0])
-            src = gaussian_blur(src, self.cell * 0.42 * src.shape[1] / img.shape[1])
+            src = gaussian_blur(src, self.cell * 0.3 * src.shape[1] / img.shape[1])
         else:
             src = img
         grid = sample_bilinear(src, cx, cy)
