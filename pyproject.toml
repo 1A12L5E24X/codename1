@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dotfx"
+version = "0.1.0"
+description = "Turn photos and video into halftone and dither prints from the terminal"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24", "Pillow>=10.1"]
+
+[project.optional-dependencies]
+fast = ["numba>=0.59"]
+test = ["pytest>=7"]
+
+[project.scripts]
+dotfx = "dotfx.cli:main"
+
+[tool.setuptools]
+packages = ["dotfx"]

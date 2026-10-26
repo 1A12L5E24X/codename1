@@ -1,0 +1,419 @@
+"""Command line interface."""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import os
+import sys
+from dataclasses import fields
+from pathlib import Path
+
+import numpy as np
+
+from . import __version__
+from .media import (
+    IMAGE_EXTS,
+    MediaError,
+    Progress,
+    VideoOptions,
+    is_video,
+    load_image,
+    open_writer,
+    ordered_map,
+    probe,
+    read_frames,
+    save_image,
+)
+from .pipeline import render, to_uint8
+from .presets import PRESETS, load_preset, to_toml
+from .settings import Settings
+
+COMMANDS = ("render", "presets", "gallery", "options")
+
+GROUP_TITLES = {
+    "effect": "effect",
+    "size": "size",
+    "tone": "tone (applied before the effect)",
+    "colors": "colors",
+    "halftone": "halftone screen (--effect halftone)",
+    "dither": "dither (--effect dither)",
+    "texture": "print texture",
+}
+
+
+def _flag(name: str) -> str:
+    return "--" + name.replace("_", "-")
+
+
+def add_setting_args(parser: argparse.ArgumentParser) -> None:
+    """One flag per Settings field; defaults are None so presets aren't overridden."""
+    groups: dict[str, argparse._ArgumentGroup] = {}
+    short = {"effect": ["-e"], "mode": ["-m"]}
+    for f in fields(Settings):
+        group = f.metadata["group"]
+        if group not in groups:
+            groups[group] = parser.add_argument_group(GROUP_TITLES.get(group, group))
+        g = groups[group]
+        help_text = f.metadata["help"] + f" [default: {f.default}]"
+        flags = short.get(f.name, []) + [_flag(f.name)]
+        if isinstance(f.default, bool):
+            g.add_argument(*flags, dest=f.name, action=argparse.BooleanOptionalAction, default=None, help=help_text)
+        else:
+            kind = type(f.default)
+            g.add_argument(
+                *flags, dest=f.name, type=kind, default=None, choices=f.metadata.get("choices"),
+                metavar=f.metadata.get("metavar") or (None if f.metadata.get("choices") else kind.__name__.upper()),
+                help=help_text,
+            )
+
+
+def build_settings(args: argparse.Namespace) -> Settings:
+    s = Settings()
+    for p in args.preset or []:
+        s.update(load_preset(p))
+    overrides = {f.name: getattr(args, f.name) for f in fields(Settings) if getattr(args, f.name, None) is not None}
+    s.update(overrides)
+    s.validate()
+    return s
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="dotfx",
+        description="Turn photos and video into halftone and dither prints.",
+        epilog="Run 'dotfx render -h' for every option, 'dotfx presets' for the built-in looks.",
+    )
+    parser.add_argument("--version", action="version", version=f"dotfx {__version__}")
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
+
+    r = sub.add_parser(
+        "render",
+        help="render images or videos (default command)",
+        description="Render images or videos. Any option overrides the preset.",
+    )
+    r.add_argument("inputs", nargs="+", metavar="INPUT", help="image/video files, directories or globs")
+    io = r.add_argument_group("input/output")
+    io.add_argument("-o", "--output", help="output file, or a directory for several inputs")
+    io.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml",
+                    help="start from a preset (repeatable; later ones override earlier)")
+    io.add_argument("--format", help="output extension when -o is a directory or omitted (e.g. png, jpg, mp4, gif)")
+    io.add_argument("--quality", type=int, default=95, help="JPEG/WebP quality [default: 95]")
+    io.add_argument("--compare", action="store_true", help="put the original next to the result")
+    io.add_argument("--preview", action="store_true", help="also draw the result in the terminal")
+    io.add_argument("--preview-only", action="store_true", help="draw in the terminal and don't write a file")
+    io.add_argument("--save-preset", metavar="FILE.toml", help="write the effective settings to a preset file")
+    io.add_argument("--overwrite", "-y", action="store_true", help="replace existing output files")
+    io.add_argument("-q", "--quiet", action="store_true", help="only print errors")
+
+    v = r.add_argument_group("video")
+    v.add_argument("--fps", type=float, default=0, help="output frame rate (0 = same as source)")
+    v.add_argument("--start", type=float, default=0, help="start time in seconds")
+    v.add_argument("--duration", type=float, default=0, help="only process this many seconds")
+    v.add_argument("--max-frames", type=int, default=0, help="stop after this many frames")
+    v.add_argument("--crf", type=int, default=16, help="encoder quality, lower is better [default: 16]")
+    v.add_argument("--codec", default="", help="video encoder (libx264, libx265, libvpx-vp9, prores_ks, ...)")
+    v.add_argument("--encoder-preset", default="medium", help="x264/x265 speed preset [default: medium]")
+    v.add_argument("--pix-fmt", default="", help="encoder pixel format, e.g. yuv444p keeps colored dots crisp")
+    v.add_argument("--no-audio", dest="audio", action="store_false", help="drop the audio track")
+    v.add_argument("-j", "--jobs", type=int, default=0, help="worker processes (0 = all cores)")
+    add_setting_args(r)
+
+    p = sub.add_parser("presets", help="list presets, or show one as TOML")
+    p.add_argument("name", nargs="?", help="preset to show")
+
+    g = sub.add_parser("gallery", help="render one image with every preset into a contact sheet")
+    g.add_argument("input", help="image (or video: first frame) to render")
+    g.add_argument("-o", "--output", default="gallery.png", help="output image [default: gallery.png]")
+    g.add_argument("--tile", type=int, default=420, help="tile width in pixels [default: 420]")
+    g.add_argument("--presets", default="", help="comma-separated subset of presets")
+    g.add_argument("--columns", type=int, default=4, help="tiles per row [default: 4]")
+
+    sub.add_parser("options", help="list every effect option with its default")
+    return parser
+
+
+# --- helpers ----------------------------------------------------------------------
+
+
+def log(args, *msg) -> None:
+    if not getattr(args, "quiet", False):
+        print(*msg, file=sys.stderr)
+
+
+def expand_inputs(items: list[str]) -> list[Path]:
+    out: list[Path] = []
+    for item in items:
+        p = Path(item).expanduser()
+        if p.is_dir():
+            for child in sorted(p.iterdir()):
+                if child.is_file() and (child.suffix.lower() in IMAGE_EXTS or is_video(child)):
+                    out.append(child)
+        elif p.exists():
+            out.append(p)
+        else:
+            matches = sorted(glob.glob(item))
+            if not matches:
+                raise FileNotFoundError(f"no such file: {item}")
+            out.extend(Path(m) for m in matches)
+    return out
+
+
+def output_path(src: Path, args, settings: Settings, multiple: bool) -> Path:
+    video = is_video(src)
+    tag = (args.preset[-1] if args.preset else settings.effect)
+    tag = Path(tag).stem if tag.endswith(".toml") else tag
+    ext = args.format or ("mp4" if video and src.suffix.lower() != ".gif" else ("gif" if video else "png"))
+    ext = "." + ext.lstrip(".")
+    if args.output:
+        o = Path(args.output).expanduser()
+        if multiple or o.is_dir() or args.output.endswith(("/", os.sep)):
+            return o / f"{src.stem}.{tag}{ext}"
+        return o
+    return src.with_name(f"{src.stem}.{tag}{ext}")
+
+
+def side_by_side(original: np.ndarray, result: np.ndarray) -> np.ndarray:
+    from .ops import resize
+    from .pipeline import prepare
+
+    h, w = result.shape[:2]
+    orig = original.astype(np.float32) / 255.0 if original.dtype == np.uint8 else original
+    if orig.ndim == 3 and orig.shape[2] == 4:
+        orig = orig[..., :3]
+    orig = np.clip(resize(orig[..., :3], w, h), 0, 1)
+    if result.shape[2] == 4:
+        a = result[..., 3:4]
+        result = result[..., :3] * a + (1 - a)
+    gap = np.ones((h, max(4, w // 100), 3), np.float32)
+    return np.concatenate([orig, gap, result], axis=1)
+
+
+# --- video worker state (set per process) -------------------------------------------
+
+_W: dict = {}
+
+
+def _init_worker(settings: Settings, compare: bool) -> None:
+    _W["s"] = settings
+    _W["compare"] = compare
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+
+def _render_frame(item):
+    index, frame = item
+    s, compare = _W["s"], _W["compare"]
+    out = render(frame, s, frame=index)
+    if compare:
+        out = side_by_side(frame, out)
+    if out.shape[2] == 4:
+        a = out[..., 3:4]
+        out = out[..., :3] * a + (1 - a)
+    out = to_uint8(out)
+    h, w = out.shape[:2]
+    return out[: h - h % 2, : w - w % 2]  # even sizes for yuv420p encoders
+
+
+def render_video(src: Path, dst: Path, s: Settings, args) -> None:
+    info = probe(src)
+    opts = VideoOptions(
+        fps=args.fps, start=args.start, duration=args.duration, max_frames=args.max_frames, crf=args.crf,
+        codec=args.codec, encoder_preset=args.encoder_preset, pix_fmt=args.pix_fmt, audio=args.audio,
+        jobs=args.jobs,
+    )
+    if s.paper.strip().lower() in ("none", "transparent"):
+        log(args, "note: video has no alpha here; transparent paper is flattened onto white")
+    fps = opts.fps or info.fps
+    total = info.frames
+    if opts.duration:
+        total = int(round(opts.duration * fps))
+    elif opts.start and info.duration:
+        total = int(round(max(info.duration - opts.start, 0) * fps))
+    elif opts.fps and info.duration:
+        total = int(round(info.duration * fps))
+    if opts.max_frames:
+        total = min(total, opts.max_frames) if total else opts.max_frames
+
+    frames = read_frames(src, info, opts.start, opts.duration, opts.fps, opts.max_frames)
+
+    def limited():
+        for i, f in enumerate(frames):
+            if opts.max_frames and i >= opts.max_frames:
+                break
+            yield i, f
+
+    jobs = opts.jobs or os.cpu_count() or 1
+    results = ordered_map(_render_frame, limited(), jobs, _init_worker, (s, args.compare))
+    first = next(results, None)
+    if first is None:
+        raise MediaError(f"could not decode any frames from {src}")
+    h, w = first.shape[:2]
+    if args.preview or args.preview_only:
+        from .preview import terminal_preview
+
+        terminal_preview(first)
+        if args.preview_only:
+            frames.close()
+            return
+    writer = open_writer(dst, w, h, fps, src, opts, info.has_audio)
+    prog = Progress(total, f"{src.name} → {dst.name}") if not args.quiet else None
+    try:
+        for frame in _chain(first, results):
+            writer.stdin.write(frame.tobytes())
+            if prog:
+                prog.update()
+    except BrokenPipeError:
+        pass
+    finally:
+        if writer.stdin:
+            try:
+                writer.stdin.close()
+            except BrokenPipeError:
+                pass
+        err = writer.stderr.read().decode(errors="replace")
+        writer.wait()
+        if prog:
+            prog.close()
+    if writer.returncode != 0:
+        raise MediaError(f"ffmpeg failed writing {dst}:\n{err.strip()}")
+
+
+def _chain(first, rest):
+    yield first
+    yield from rest
+
+
+def render_image(src: Path, dst: Path | None, s: Settings, args) -> None:
+    img = load_image(src)
+    out = render(img, s)
+    if args.compare:
+        out = side_by_side(img, out)
+    out8 = to_uint8(out)
+    if args.preview or args.preview_only:
+        from .preview import terminal_preview
+
+        terminal_preview(out8)
+    if dst is not None and not args.preview_only:
+        save_image(out8, dst, args.quality)
+
+
+def cmd_render(args) -> int:
+    s = build_settings(args)
+    if args.save_preset:
+        Path(args.save_preset).expanduser().write_text(to_toml(s))
+        log(args, f"saved preset → {args.save_preset}")
+    inputs = expand_inputs(args.inputs)
+    if not inputs:
+        log(args, "no inputs found")
+        return 1
+    multiple = len(inputs) > 1
+    failures = 0
+    for src in inputs:
+        dst = output_path(src, args, s, multiple)
+        if not args.preview_only and dst.exists() and not args.overwrite and dst.resolve() != src.resolve():
+            log(args, f"skip {src.name}: {dst} exists (use -y to overwrite)")
+            continue
+        if dst.resolve() == src.resolve():
+            log(args, f"skip {src.name}: output would overwrite the input")
+            failures += 1
+            continue
+        try:
+            if is_video(src):
+                render_video(src, dst, s, args)
+            else:
+                render_image(src, dst, s, args)
+                if not args.preview_only:
+                    log(args, f"{src.name} → {dst}")
+        except (MediaError, OSError, ValueError) as e:
+            failures += 1
+            print(f"error: {src}: {e}", file=sys.stderr)
+    return 1 if failures else 0
+
+
+def cmd_presets(args) -> int:
+    if args.name:
+        s = Settings().update(load_preset(args.name))
+        sys.stdout.write(f"# {PRESETS[args.name][0]}\n" if args.name in PRESETS else "")
+        sys.stdout.write(to_toml(s).replace("# dotfx preset\n\n", ""))
+        return 0
+    width = max(len(n) for n in PRESETS)
+    for name, (desc, d) in PRESETS.items():
+        print(f"  {name:<{width}}  {d.get('effect', 'halftone'):<8}  {desc}")
+    print("\nUse: dotfx render photo.jpg -p NAME   (show settings: dotfx presets NAME)")
+    return 0
+
+
+def cmd_options(args) -> int:
+    group = None
+    for f in fields(Settings):
+        g = f.metadata["group"]
+        if g != group:
+            group = g
+            print(f"\n{GROUP_TITLES.get(g, g)}:")
+        choices = f.metadata.get("choices")
+        extra = f"  [{'|'.join(choices)}]" if choices else ""
+        print(f"  {_flag(f.name):<18} {str(f.default):<10} {f.metadata['help']}{extra}")
+    return 0
+
+
+def cmd_gallery(args) -> int:
+    from PIL import Image, ImageDraw
+
+    src = Path(args.input)
+    if is_video(src):
+        info = probe(src)
+        img = next(read_frames(src, info))
+    else:
+        img = load_image(src)
+    names = [n.strip() for n in args.presets.split(",") if n.strip()] or list(PRESETS)
+    tile_w = args.tile
+    h, w = img.shape[:2]
+    tile_h = round(h * tile_w / w)
+    label_h = 22
+    cols = max(1, min(args.columns, len(names)))
+    rows = -(-len(names) // cols)
+    sheet = Image.new("RGB", (cols * tile_w, rows * (tile_h + label_h)), "#ffffff")
+    draw = ImageDraw.Draw(sheet)
+    prog = Progress(len(names), "gallery")
+    for i, name in enumerate(names):
+        s = Settings().update(load_preset(name))
+        # Render at twice the tile size so dots survive the downscale.
+        s.width = tile_w * 2
+        s.height = 0
+        s.scale = 1.0
+        s.cell = s.cell * 1.5
+        s.pixel = max(1, round(s.pixel * 1.5))
+        out = to_uint8(render(img, s))
+        if out.shape[2] == 4:
+            out = out[..., :3]
+        tile = Image.fromarray(out).resize((tile_w, tile_h), Image.Resampling.LANCZOS)
+        x, y = (i % cols) * tile_w, (i // cols) * (tile_h + label_h)
+        sheet.paste(tile, (x, y + label_h))
+        draw.text((x + 6, y + 5), name, fill="#111111")
+        prog.update()
+    prog.close()
+    sheet.save(args.output)
+    print(f"gallery → {args.output}", file=sys.stderr)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] not in COMMANDS and argv[0] not in ("-h", "--help", "--version"):
+        argv.insert(0, "render")
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.command:
+        parser.print_help()
+        return 0
+    try:
+        return {"render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery, "options": cmd_options}[
+            args.command
+        ](args)
+    except (KeyError, ValueError, FileNotFoundError, MediaError) as e:
+        msg = e.args[0] if isinstance(e, KeyError) and e.args else e
+        print(f"error: {msg}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
