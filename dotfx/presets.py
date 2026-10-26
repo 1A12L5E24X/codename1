@@ -3,6 +3,7 @@ anything given on the command line is applied on top."""
 
 from __future__ import annotations
 
+import difflib
 import tomllib
 from pathlib import Path
 
@@ -155,14 +156,17 @@ def load_preset(name_or_path: str) -> dict:
             base.update(data)
             data = base
         return data
-    close = [n for n in PRESETS if n.startswith(name_or_path[:3])]
-    hint = f" (did you mean {', '.join(close)}?)" if close else ""
+    close = difflib.get_close_matches(name_or_path, list(PRESETS), n=3, cutoff=0.6)
+    hint = f" (did you mean {', '.join(close)}?)" if close else " (see: dotfx presets)"
     raise KeyError(f"unknown preset: {name_or_path}{hint}")
 
 
 def to_toml(settings: Settings, only_changed: bool = True) -> str:
     lines = ["# dotfx preset", ""]
-    for key, value in settings.to_dict(only_changed=only_changed).items():
+    values = settings.to_dict(only_changed=only_changed)
+    # Always name the engine and mode, even at their defaults, for readability.
+    head = {k: getattr(settings, k) for k in ("effect", "mode")}
+    for key, value in {**head, **values}.items():
         if isinstance(value, bool):
             v = "true" if value else "false"
         elif isinstance(value, (int, float)):
