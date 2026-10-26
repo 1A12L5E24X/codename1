@@ -39,6 +39,13 @@ def target_size(w: int, h: int, s: Settings) -> tuple[int, int]:
 def prepare(img: np.ndarray, s: Settings) -> np.ndarray:
     """uint8/float RGB(A) -> float32 RGB at processing size."""
     if img.dtype == np.uint8:
+        h, w = img.shape[:2]
+        tw, th = target_size(w, h, s)
+        if (tw, th) != (w, h) and img.ndim == 3:
+            # Resize 8-bit images in Pillow directly: much faster than float.
+            from PIL import Image
+
+            img = np.asarray(Image.fromarray(img).resize((tw, th), Image.Resampling.LANCZOS))
         img = img.astype(np.float32) / 255.0
     if img.ndim == 2:
         img = np.repeat(img[..., None], 3, axis=2)
@@ -135,9 +142,11 @@ def halftone_layers(img: np.ndarray, s: Settings, seed: int) -> list[Layer]:
         dark = 1 - lightness(img, s.channel)
         layers.append(Layer(plate(dark, s.angle), np.array(parse_color(s.ink), np.float32)))
     elif s.mode == "color":
-        lum = luminance(img)
-        p_l = 1.0 if paper is None else float(np.dot(paper, [0.2126, 0.7152, 0.0722]))
-        tone_src = np.abs(lum - p_l) / max(p_l, 1 - p_l, 1e-3)
+        # Dot size = how far the color is from the paper, so saturated colors
+        # (yellow on white, say) still get solid dots.
+        p_rgb = np.array(paper if paper is not None else (1.0, 1.0, 1.0), np.float32)
+        far = float(np.linalg.norm(np.maximum(p_rgb, 1 - p_rgb)))
+        tone_src = np.linalg.norm(img - p_rgb, axis=-1) / max(far, 1e-3)
         scr = ht.get_screen(h, w, float(s.cell), float(s.angle), (0.0, 0.0), s.spot)
         tone = ht.tone_curve(scr.sample(tone_src, s.sample), s)
         cov = scr.coverage(tone, s.softness, rough)
@@ -314,6 +323,11 @@ def composite(layers: list[Layer], s: Settings, h: int, w: int, seed: int) -> np
         ink_like = np.array(parse_color(s.ink) or (0, 0, 0), np.float32)
         out = out + (base - out) * np.clip(holes, 0, 1)[..., None]
         out = out + (ink_like - out) * np.clip(dust, 0, 0.8)[..., None]
+    if s.glow > 0:
+        # Screen-blend a blurred copy: light bleeding from bright dots.
+        radius = max(s.cell if s.effect == "halftone" else s.pixel, 2) * 0.8
+        halo = gaussian_blur(out, radius)
+        out = 1 - (1 - out) * (1 - np.clip(halo * s.glow * 1.5, 0, 1))
     if s.vignette > 0:
         yy, xx = np.mgrid[0:h, 0:w]
         d = ((xx / max(w - 1, 1) - 0.5) ** 2 + (yy / max(h - 1, 1) - 0.5) ** 2) * 2

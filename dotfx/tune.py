@@ -28,7 +28,7 @@ STEPS = {
     "gcr": 0.05, "misregister": 0.1, "dot_size": 0.05, "diffusion": 0.05, "spread": 0.02,
     "bias": 0.02, "roughness": 0.05, "rough_scale": 0.25, "ink_noise": 0.05, "ink_opacity": 0.05,
     "bleed": 0.05, "grain": 0.05, "grain_scale": 0.25, "speckle": 0.1, "vignette": 0.05,
-    "post_blur": 0.05, "black": 0.01, "white": 0.01, "auto_levels": 0.5, "shadows": 0.05,
+    "post_blur": 0.05, "glow": 0.05, "black": 0.01, "white": 0.01, "auto_levels": 0.5, "shadows": 0.05,
     "highlights": 0.05,
 }
 # Values offered when cycling free-text settings with the arrow keys.
@@ -77,17 +77,32 @@ class Tuner:
         self.error = ""
         self.help = False
         self.preset_names = list(PRESETS)
+        self.note = ""
 
     # -- data -----------------------------------------------------------------
     def visible_fields(self):
         hidden = EFFECT_GROUPS.get(self.s.effect)
         return [f for f in fields(Settings) if f.metadata["group"] != hidden]
 
+    def source(self) -> tuple[np.ndarray, Settings]:
+        """Source resized for the current size settings (cached), and settings
+        that render it as-is."""
+        from dataclasses import replace
+
+        from .pipeline import prepare
+
+        key = (self.s.width, self.s.height, self.s.scale)
+        if getattr(self, "_src_key", None) != key:
+            self._src = prepare(self.img, self.s)
+            self._src_key = key
+        return self._src, replace(self.s, width=0, height=0, scale=1.0)
+
     def rerender(self) -> None:
         t = time.monotonic()
         try:
             self.s.validate()
-            self.out = to_uint8(render(self.img, self.s))
+            src, s = self.source()
+            self.out = to_uint8(render(src, s))
             self.error = ""
         except (ValueError, KeyError) as e:
             self.error = str(e)
@@ -125,7 +140,7 @@ class Tuner:
     def load_preset(self, step: int) -> None:
         idx = self.preset_names.index(self.base) if self.base in self.preset_names else -1
         self.base = self.preset_names[(idx + step) % len(self.preset_names)]
-        keep = {"width": self.s.width, "height": self.s.height, "scale": self.s.scale}
+        keep = {"width": self.s.width, "height": self.s.height, "scale": self.s.scale, "cells": self.s.cells}
         self.s = Settings().update(load_preset(self.base)).update(keep)
         self.sel = min(self.sel, len(self.visible_fields()) - 1)
         self.status = f"preset: {self.base} — {PRESETS[self.base][0]}"
@@ -261,7 +276,7 @@ class Tuner:
             self.status = "rendering…"
             self.draw()
             self.rerender()
-            self.status = "←/→ adjust · ↑/↓ select · p preset · z zoom · ? help"
+            self.status = self.note or "←/→ adjust · ↑/↓ select · p preset · z zoom · ? help"
             while True:
                 self.draw()
                 k = _read_key(fd, 0.5)
@@ -329,7 +344,9 @@ class Tuner:
         return 0
 
 
-def run_tuner(src: Path, img: np.ndarray, settings: Settings, base: str | None, output: Path, save: Path) -> int:
+def run_tuner(
+    src: Path, img: np.ndarray, settings: Settings, base: str | None, output: Path, save: Path, note: str = ""
+) -> int:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         print("error: tune needs an interactive terminal", file=sys.stderr)
         return 2
@@ -338,4 +355,6 @@ def run_tuner(src: Path, img: np.ndarray, settings: Settings, base: str | None, 
     except ImportError:
         print("error: tune needs a Unix-like terminal (termios)", file=sys.stderr)
         return 2
-    return Tuner(img, settings, src, base, output, save).run()
+    tuner = Tuner(img, settings, src, base, output, save)
+    tuner.note = note
+    return tuner.run()

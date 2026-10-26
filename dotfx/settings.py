@@ -111,6 +111,7 @@ class Settings:
     grain: float = opt(0.0, "Paper grain / film noise amount (0..1).", "texture")
     grain_scale: float = opt(1.0, "Grain feature size in pixels.", "texture")
     speckle: float = opt(0.0, "Random paper flecks and dust (0..1).", "texture")
+    glow: float = opt(0.0, "Light bleeding from bright areas, for LED and screen looks (0..1).", "texture")
     vignette: float = opt(0.0, "Darken toward the edges (0..1).", "texture")
     post_blur: float = opt(0.0, "Soften the finished print, like a scan of paper (pixels).", "texture")
     animate_grain: bool = opt(False, "Video: re-roll grain and roughness every frame.", "texture")

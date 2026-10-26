@@ -207,7 +207,6 @@ _W: dict = {}
 def _init_worker(settings: Settings, compare: bool) -> None:
     _W["s"] = settings
     _W["compare"] = compare
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 
 def _render_frame(item):
@@ -421,8 +420,15 @@ def cmd_tune(args) -> int:
         raise FileNotFoundError(f"no such file: {src}")
     img = first_frame_or_image(src)
     base = args.preset[-1] if args.preset else None
+    note = ""
+    sized = any(getattr(args, k) is not None for k in ("width", "height", "scale"))
+    longest = max(img.shape[:2])
+    if not sized and longest > 1600:
+        # Keep keypresses snappy; the scale is shown (and saved) like any setting.
+        s.scale = round(1600 / longest, 3)
+        note = f"large image: working at scale {s.scale:g} (set scale to 1 for full size)"
     out = Path(args.output) if args.output else src.with_name(f"{src.stem}.tuned.png")
-    return run_tuner(src, img, s, base, out, Path(args.save))
+    return run_tuner(src, img, s, base, out, Path(args.save), note)
 
 
 def main(argv: list[str] | None = None) -> int:

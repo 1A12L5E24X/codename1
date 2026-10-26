@@ -60,7 +60,7 @@ PRESETS: dict[str, tuple[str, dict]] = {
     ),
     "color-dots": (
         "Dots in the photo's own colors on black, like an LED sign",
-        dict(effect="halftone", mode="color", cell=10, spot="dot", angle=0, paper="#0b0b0c", saturation=1.2),
+        dict(effect="halftone", mode="color", cell=10, spot="dot", angle=0, paper="#0b0b0c", saturation=1.2, glow=0.25),
     ),
     "rgb-screen": (
         "Additive red/green/blue screens on black",
@@ -122,14 +122,15 @@ PRESETS: dict[str, tuple[str, dict]] = {
         "Green-screen terminal glow, ordered dither on black",
         dict(
             effect="dither", mode="gray", levels=4, algorithm="bayer8", pixel=3, cell_shape="rounded",
-            dot_size=0.85, ink="phosphor", paper="#031207", invert=True, contrast=1.2,
+            dot_size=0.85, ink="phosphor", paper="#031207", invert=True, contrast=1.2, glow=0.35,
+            vignette=0.4,
         ),
     ),
     "led-wall": (
         "Chunky RGB LED matrix",
         dict(
             effect="dither", mode="rgb", levels=4, algorithm="bayer4", pixel=8, cell_shape="circle",
-            dot_size=0.82, paper="#050505", saturation=1.3,
+            dot_size=0.82, paper="#050505", saturation=1.3, glow=0.4,
         ),
     ),
     "posterized": (

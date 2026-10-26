@@ -101,7 +101,8 @@ dotfx tune photo.jpg -p newsprint
 ```
 
 The tuner shows a settings list beside a live preview. The `1:1` zoom shows the
-actual dots.
+actual dots. Images larger than 1600px start at a reduced `scale` so the preview
+stays responsive. The scale appears in the list like any other setting.
 
 | key | action |
 |---|---|
@@ -189,6 +190,11 @@ dotfx in.mp4 -p riso --codec prores_ks -o out.mov # for editing
 dotfx in.mp4 -p stipple -o frames/%05d.png        # image sequence
 dotfx in.mp4 -p comic --compare                   # original | effect side by side
 ```
+
+For video, prefer ordered dithers (`bayer*`, `cluster*`, `bluenoise`, `lines`)
+and halftones. They stay put from frame to frame. Error diffusion (Floyd–Steinberg,
+Atkinson…) recomputes its whole pattern every frame, so it shimmers. That can be
+a look in its own right, but it costs bitrate.
 
 Other flags: `--fps`, `--max-frames`, `--crf`, `--encoder-preset`, `--no-audio`,
 and `-j/--jobs` for the number of worker processes (default: all cores). Screen

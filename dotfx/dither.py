@@ -240,14 +240,22 @@ def _diffuse_lists(img, palette, dx, dy, wt, serpentine, strength, out):
     out[...] = np.array(result, dtype=out.dtype)
 
 
-try:  # pragma: no cover - optional acceleration
-    import numba
+_DIFFUSE = None
 
-    _diffuse_fast = numba.njit(cache=True, nogil=True)(_diffuse_py)
-    HAVE_NUMBA = True
-except Exception:  # noqa: BLE001
-    _diffuse_fast = _diffuse_lists
-    HAVE_NUMBA = False
+
+def _diffuse_fast(*args):
+    """Error diffusion with numba when installed (compiled once, cached on
+    disk), else the pure-Python version. numba is imported on first use only,
+    since importing it is slow."""
+    global _DIFFUSE
+    if _DIFFUSE is None:
+        try:
+            import numba
+
+            _DIFFUSE = numba.njit(cache=True, nogil=True)(_diffuse_py)
+        except Exception:  # noqa: BLE001 - any numba/llvmlite failure means fall back
+            _DIFFUSE = _diffuse_lists
+    return _DIFFUSE(*args)
 
 
 def error_diffuse(img: np.ndarray, palette: np.ndarray, algorithm: str, serpentine=True, strength=1.0) -> np.ndarray:
