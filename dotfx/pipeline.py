@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, replace
+from functools import lru_cache
 
 import numpy as np
 
@@ -69,20 +71,34 @@ def lightness(img: np.ndarray, channel: str) -> np.ndarray:
 # --- texture helpers ------------------------------------------------------------
 
 
-def _rough_field(h, w, s: Settings, rng, cell: float) -> np.ndarray | None:
+@lru_cache(maxsize=12)
+def _noise(kind: str, h: int, w: int, seed: int, scale: float) -> np.ndarray:
+    """Cached noise fields, so static textures cost nothing per video frame."""
+    rng = np.random.default_rng([seed, zlib.crc32(kind.encode())])
+    if kind.startswith("fbm"):
+        out = fbm_noise(h, w, scale, rng, octaves=4)
+    elif kind.startswith("uniform"):
+        out = rng.random((h, w), dtype=np.float32)
+    else:
+        out = value_noise(h, w, scale, rng)
+    out.setflags(write=False)
+    return out
+
+
+def _rough_field(h, w, s: Settings, seed: int, cell: float) -> np.ndarray | None:
     if s.roughness <= 0:
         return None
-    fine = value_noise(h, w, s.rough_scale, rng)
-    coarse = value_noise(h, w, max(cell * 0.6, 2.0), rng)
+    fine = _noise("rough-fine", h, w, seed, s.rough_scale)
+    coarse = _noise("rough-coarse", h, w, seed, max(cell * 0.6, 2.0))
     # Displacement of dot edges, in pixels.
     return s.roughness * (1.2 * fine + 0.6 * coarse) * (1.0 + 0.12 * cell)
 
 
-def _ink_variation(h, w, s: Settings, rng) -> np.ndarray | None:
+def _ink_variation(h, w, s: Settings, seed: int) -> np.ndarray | None:
     if s.ink_noise <= 0:
         return None
-    blotch = fbm_noise(h, w, max(h, w) / 6, rng, octaves=4)
-    mottle = value_noise(h, w, 2.5, rng)
+    blotch = _noise("fbm-blotch", h, w, seed, max(h, w) / 6)
+    mottle = _noise("mottle", h, w, seed, 2.5)
     return np.clip(1 - s.ink_noise * (0.35 * (blotch + 1) + 0.25 * (mottle + 1) * 0.5), 0, 1)
 
 
@@ -101,19 +117,19 @@ def _finish_coverage(cov: np.ndarray, s: Settings, variation) -> np.ndarray:
 # --- effects --------------------------------------------------------------------
 
 
-def halftone_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
+def halftone_layers(img: np.ndarray, s: Settings, seed: int) -> list[Layer]:
     h, w = img.shape[:2]
-    rough = _rough_field(h, w, s, rng, s.cell)
+    rough = _rough_field(h, w, s, seed, s.cell)
     paper = parse_color(s.paper)
     layers: list[Layer] = []
 
     def plate(channel: np.ndarray, angle: float, plate_rng=None) -> np.ndarray:
         off = (0.0, 0.0)
         if s.misregister > 0 and plate_rng is not None:
-            off = tuple(plate_rng.normal(0, s.misregister, 2))
-        scr = ht.Screen(h, w, s.cell, angle, off)
+            off = tuple(round(float(o), 3) for o in plate_rng.normal(0, s.misregister, 2))
+        scr = ht.get_screen(h, w, float(s.cell), float(angle), off, s.spot)
         tone = ht.tone_curve(scr.sample(channel, s.sample), s)
-        return scr.coverage(tone, s.spot, s.softness, rough)
+        return scr.coverage(tone, s.softness, rough)
 
     if s.mode in ("mono", "gray"):
         dark = 1 - lightness(img, s.channel)
@@ -122,9 +138,9 @@ def halftone_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
         lum = luminance(img)
         p_l = 1.0 if paper is None else float(np.dot(paper, [0.2126, 0.7152, 0.0722]))
         tone_src = np.abs(lum - p_l) / max(p_l, 1 - p_l, 1e-3)
-        scr = ht.Screen(h, w, s.cell, s.angle)
+        scr = ht.get_screen(h, w, float(s.cell), float(s.angle), (0.0, 0.0), s.spot)
         tone = ht.tone_curve(scr.sample(tone_src, s.sample), s)
-        cov = scr.coverage(tone, s.spot, s.softness, rough)
+        cov = scr.coverage(tone, s.softness, rough)
         # Dots carry their cell's color; boost it so small dots still read.
         rgb = scr.sample(img, s.sample)
         rgb_l = luminance(rgb)[..., None]
@@ -256,7 +272,7 @@ def dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
 # --- compositing ----------------------------------------------------------------
 
 
-def composite(layers: list[Layer], s: Settings, h: int, w: int, rng) -> np.ndarray:
+def composite(layers: list[Layer], s: Settings, h: int, w: int, seed: int) -> np.ndarray:
     paper = parse_color(s.paper)
     transparent = paper is None
     base = np.array(paper if paper is not None else (1.0, 1.0, 1.0), np.float32)
@@ -276,10 +292,10 @@ def composite(layers: list[Layer], s: Settings, h: int, w: int, rng) -> np.ndarr
     out = np.clip(out, 0, 1)
 
     if s.grain > 0:
-        n = value_noise(h, w, s.grain_scale, rng) * 0.6 + value_noise(h, w, s.grain_scale * 4, rng) * 0.4
+        n = _noise("grain", h, w, seed, s.grain_scale) * 0.6 + _noise("grain-coarse", h, w, seed, s.grain_scale * 4) * 0.4
         out = np.clip(out * (1 + s.grain * 0.22 * n[..., None]) + s.grain * 0.03 * n[..., None], 0, 1)
     if s.speckle > 0:
-        r = rng.random((h, w), dtype=np.float32)
+        r = _noise("uniform-speckle", h, w, seed, 1.0)
         dust = gaussian_blur((r > 1 - 0.0025 * s.speckle).astype(np.float32), 0.6) * 2.5
         holes = gaussian_blur((r < 0.004 * s.speckle).astype(np.float32), 0.5) * 2.0
         ink_like = np.array(parse_color(s.ink) or (0, 0, 0), np.float32)
@@ -312,21 +328,21 @@ def render(img: np.ndarray, s: Settings, frame: int = 0) -> np.ndarray:
     seed = s.seed + (frame if s.animate_grain else 0)
     rng = np.random.default_rng(seed)
     if s.effect == "halftone":
-        layers = halftone_layers(src, s, rng)
+        layers = halftone_layers(src, s, seed)
         cell = s.cell
     else:
         layers = dither_layers(src, s, rng)
         cell = s.pixel
-    variation = _ink_variation(h, w, s, rng)
+    variation = _ink_variation(h, w, s, seed)
     for layer in layers:
         layer.coverage = _finish_coverage(layer.coverage, s, variation)
     if s.effect == "dither" and s.roughness > 0:
         # Blur then re-threshold with a displaced level: ragged, inky cell edges.
-        rough = _rough_field(h, w, s, rng, cell)
+        rough = _rough_field(h, w, s, seed, cell)
         for layer in layers:
             b = gaussian_blur(layer.coverage, 0.8)
             layer.coverage = np.clip((b - 0.5 + 0.5 * rough) * 2 + 0.5, 0, 1).astype(np.float32)
-    return composite(layers, s, h, w, rng)
+    return composite(layers, s, h, w, seed)
 
 
 def to_uint8(img: np.ndarray) -> np.ndarray:

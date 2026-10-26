@@ -11,6 +11,12 @@ def luminance(img: np.ndarray) -> np.ndarray:
     return img @ LUMA if img.ndim == 3 else img
 
 
+def _axis_slice(a: np.ndarray, axis: int, start: int, stop: int) -> np.ndarray:
+    idx = [slice(None)] * a.ndim
+    idx[axis] = slice(start, stop)
+    return a[tuple(idx)]
+
+
 def box_blur(a: np.ndarray, radius: float, axis: int | None = None) -> np.ndarray:
     """Box blur with a (fractional) radius using cumulative sums; edges are clamped."""
     if radius <= 0:
@@ -20,16 +26,18 @@ def box_blur(a: np.ndarray, radius: float, axis: int | None = None) -> np.ndarra
     r = int(np.floor(radius))
     frac = radius - r
     n = a.shape[axis]
-    pad = [(0, 0)] * a.ndim
-    pad[axis] = (r + 2, r + 2)
-    p = np.pad(a, pad, mode="edge").astype(np.float64)
-    c = np.cumsum(p, axis=axis)
-    c = np.concatenate([np.zeros_like(np.take(c, [0], axis=axis)), c], axis=axis)
+    pad = r + 1
+    widths = [(0, 0)] * a.ndim
+    widths[axis] = (pad, pad)
+    p = np.pad(a, widths, mode="edge")
+    c = np.cumsum(p, axis=axis, dtype=np.float64)
+    zshape = list(c.shape)
+    zshape[axis] = 1
+    c = np.concatenate([np.zeros(zshape), c], axis=axis)
 
-    def window(rad: int) -> np.ndarray:
-        lo = np.arange(n) + (r + 2) - rad
-        hi = np.arange(n) + (r + 2) + rad + 1
-        return np.take(c, hi, axis=axis) - np.take(c, lo, axis=axis)
+    def window(k: int) -> np.ndarray:
+        # Sum of the 2k+1 samples centred on each original position.
+        return _axis_slice(c, axis, pad + k + 1, pad + k + 1 + n) - _axis_slice(c, axis, pad - k, pad - k + n)
 
     s = window(r)
     width = 2 * r + 1
@@ -40,10 +48,29 @@ def box_blur(a: np.ndarray, radius: float, axis: int | None = None) -> np.ndarra
     return (s / width).astype(np.float32)
 
 
+def _gaussian_direct(a: np.ndarray, sigma: float) -> np.ndarray:
+    rad = max(1, int(np.ceil(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-rad, rad + 1) / sigma) ** 2).astype(np.float32)
+    k /= k.sum()
+    out = a.astype(np.float32)
+    for axis in (0, 1):
+        n = out.shape[axis]
+        widths = [(0, 0)] * out.ndim
+        widths[axis] = (rad, rad)
+        p = np.pad(out, widths, mode="edge")
+        acc = k[0] * _axis_slice(p, axis, 0, n)
+        for i in range(1, 2 * rad + 1):
+            acc += k[i] * _axis_slice(p, axis, i, i + n)
+        out = acc
+    return out
+
+
 def gaussian_blur(a: np.ndarray, sigma: float) -> np.ndarray:
-    """Gaussian approximated by three box passes."""
+    """Gaussian blur: exact taps for small sigma, three box passes for large."""
     if sigma <= 0.05:
         return a
+    if sigma <= 1.6:
+        return _gaussian_direct(a, sigma)
     # Box radius whose 3-pass variance matches sigma^2: 3 * ((2r+1)^2 - 1) / 12.
     r = (np.sqrt(4 * sigma * sigma + 1) - 1) / 2
     out = a

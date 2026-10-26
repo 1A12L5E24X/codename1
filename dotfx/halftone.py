@@ -13,7 +13,7 @@ from functools import lru_cache
 
 import numpy as np
 
-from .ops import gaussian_blur, sample_bilinear
+from .ops import gaussian_blur, resize, sample_bilinear
 
 
 def _wrap(a: np.ndarray) -> np.ndarray:
@@ -76,58 +76,68 @@ def spot_rank(spot: str, x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 class Screen:
-    """Geometry of one rotated halftone screen over an h x w canvas."""
+    """Geometry of one rotated halftone screen over an h x w canvas.
 
-    def __init__(self, h: int, w: int, cell: float, angle: float, offset=(0.0, 0.0)):
-        self.h, self.w, self.cell = h, w, float(cell)
+    Everything here is independent of the image, so screens are cached and
+    reused across video frames (see get_screen).
+    """
+
+    def __init__(self, h: int, w: int, cell: float, angle: float, offset=(0.0, 0.0), spot: str = "euclid"):
+        self.h, self.w, self.cell, self.spot = h, w, float(cell), spot
         th = np.deg2rad(angle)
-        self.c, self.s = float(np.cos(th)), float(np.sin(th))
-        self.ox, self.oy = offset
-        ys, xs = np.mgrid[0:h, 0:w]
-        xs = xs + 0.5 - self.ox
-        ys = ys + 0.5 - self.oy
-        u = (xs * self.c + ys * self.s) / self.cell
-        v = (-xs * self.s + ys * self.c) / self.cell
+        c, s = float(np.cos(th)), float(np.sin(th))
+        ox, oy = offset
+        xs = (np.arange(w, dtype=np.float64) + 0.5 - ox)[None, :]
+        ys = (np.arange(h, dtype=np.float64) + 0.5 - oy)[:, None]
+        u = (xs * c + ys * s) / self.cell
+        v = (-xs * s + ys * c) / self.cell
         iu = np.floor(u)
         iv = np.floor(v)
-        self.fu = (u - iu - 0.5).astype(np.float32)
-        self.fv = (v - iv - 0.5).astype(np.float32)
-        iu = iu.astype(np.int64)
-        iv = iv.astype(np.int64)
-        self.iu0, self.iv0 = int(iu.min()), int(iv.min())
-        self.gi = iv - self.iv0
-        self.gj = iu - self.iu0
-        nu = int(iu.max()) - self.iu0 + 1
-        nv = int(iv.max()) - self.iv0 + 1
-        gu, gv = np.meshgrid(
-            (np.arange(nu) + self.iu0 + 0.5) * self.cell,
-            (np.arange(nv) + self.iv0 + 0.5) * self.cell,
-        )
+        fu = (u - iu - 0.5).astype(np.float32)
+        fv = (v - iv - 0.5).astype(np.float32)
+        del u, v
+        iu = iu.astype(np.int32)
+        iv = iv.astype(np.int32)
+        iu0, iv0 = int(iu.min()), int(iv.min())
+        nu = int(iu.max()) - iu0 + 1
+        nv = int(iv.max()) - iv0 + 1
+        # Flat index of each pixel's cell in the (nv, nu) grid of cells.
+        self.cell_index = ((iv - iv0) * nu + (iu - iu0)).astype(np.int32)
+        del iu, iv
+        gu, gv = np.meshgrid((np.arange(nu) + iu0 + 0.5) * self.cell, (np.arange(nv) + iv0 + 0.5) * self.cell)
         # Cell centres back in image space.
-        self.cx = gu * self.c - gv * self.s + self.ox
-        self.cy = gu * self.s + gv * self.c + self.oy
+        self.cx = gu * c - gv * s + ox
+        self.cy = gu * s + gv * c + oy
 
-    def sample(self, img: np.ndarray, mode: str = "average") -> np.ndarray:
-        """Per-pixel copy of the image value at the centre of each pixel's cell."""
-        src = gaussian_blur(img, self.cell * 0.42) if mode == "average" else img
-        grid = sample_bilinear(src, self.cx, self.cy)
-        return grid[self.gi, self.gj]
-
-    def coverage(
-        self,
-        tone: np.ndarray,
-        spot: str,
-        softness: float = 1.0,
-        rough: np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Ink coverage (0..1) for per-pixel target tone (0 = no ink, 1 = solid)."""
-        fu, fv = self.fu, self.fv
-        r = spot_rank(spot, fu, fv)
-        e = 0.5 / self.cell  # half a pixel, in cell units
+        self.rank = spot_rank(spot, fu, fv)
+        e = np.float32(0.5 / self.cell)  # half a pixel, in cell units
         gx = spot_rank(spot, fu + e, fv) - spot_rank(spot, fu - e, fv)
         gy = spot_rank(spot, fu, fv + e) - spot_rank(spot, fu, fv - e)
         # Rank change per pixel; capped so discontinuities stay a 1px blur.
-        g = np.minimum(np.sqrt(gx * gx + gy * gy), 0.5)
+        self.grad = np.minimum(np.sqrt(gx * gx + gy * gy), 0.5).astype(np.float32)
+
+    def sample(self, img: np.ndarray, mode: str = "average") -> np.ndarray:
+        """Per-pixel copy of the image value at the centre of each pixel's cell."""
+        cx, cy = self.cx, self.cy
+        if mode == "average":
+            # Average over roughly one cell; work at reduced size when cells are big.
+            f = self.cell / 2.0
+            src = img
+            if f > 1.25:
+                hh, ww = -(-img.shape[0] // f), -(-img.shape[1] // f)
+                src = resize(img, ww, hh, "box")
+                cx = cx * (ww / img.shape[1])
+                cy = cy * (hh / img.shape[0])
+            src = gaussian_blur(src, self.cell * 0.42 * src.shape[1] / img.shape[1])
+        else:
+            src = img
+        grid = sample_bilinear(src, cx, cy)
+        flat = grid.reshape(-1, *grid.shape[2:])
+        return flat[self.cell_index]
+
+    def coverage(self, tone: np.ndarray, softness: float = 1.0, rough: np.ndarray | None = None) -> np.ndarray:
+        """Ink coverage (0..1) for per-pixel target tone (0 = no ink, 1 = solid)."""
+        r, g = self.rank, self.grad
         if rough is not None:
             r = r + rough * (g + 0.02)
         if softness <= 0:
@@ -140,6 +150,11 @@ class Screen:
         cov = np.minimum(cov, tone * area)
         cov = np.maximum(cov, 1 - (1 - tone) * area)
         return np.clip(cov, 0, 1).astype(np.float32)
+
+
+@lru_cache(maxsize=8)
+def get_screen(h: int, w: int, cell: float, angle: float, offset: tuple[float, float], spot: str) -> Screen:
+    return Screen(h, w, cell, angle, offset, spot)
 
 
 def tone_curve(t: np.ndarray, s) -> np.ndarray:

@@ -55,16 +55,16 @@ def test_cluster_and_lines_maps_are_rankings():
 
 @pytest.mark.parametrize("spot", SPOTS)
 def test_halftone_coverage_matches_tone(spot):
-    scr = ht.Screen(240, 240, 10, 30)
+    scr = ht.Screen(240, 240, 10, 30, spot=spot)
     for t in (0.1, 0.3, 0.5, 0.7, 0.9):
-        cov = scr.coverage(np.full((240, 240), t, np.float32), spot)
+        cov = scr.coverage(np.full((240, 240), t, np.float32))
         assert abs(float(cov.mean()) - t) < 0.04, (spot, t)
 
 
 def test_halftone_extremes_are_clean():
     scr = ht.Screen(80, 80, 8, 45)
-    assert scr.coverage(np.zeros((80, 80), np.float32), "euclid").max() == 0
-    assert scr.coverage(np.ones((80, 80), np.float32), "euclid").min() == 1
+    assert scr.coverage(np.zeros((80, 80), np.float32)).max() == 0
+    assert scr.coverage(np.ones((80, 80), np.float32)).min() == 1
 
 
 @pytest.mark.parametrize("algo", list(dz.KERNELS))

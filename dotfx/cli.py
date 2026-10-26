@@ -29,7 +29,7 @@ from .pipeline import render, to_uint8
 from .presets import PRESETS, load_preset, to_toml
 from .settings import Settings
 
-COMMANDS = ("render", "presets", "gallery", "options")
+COMMANDS = ("render", "presets", "gallery", "options", "tune")
 
 GROUP_TITLES = {
     "effect": "effect",
@@ -102,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
     io.add_argument("--compare", action="store_true", help="put the original next to the result")
     io.add_argument("--preview", action="store_true", help="also draw the result in the terminal")
     io.add_argument("--preview-only", action="store_true", help="draw in the terminal and don't write a file")
+    io.add_argument("--preview-mode", default="auto", choices=("auto", "blocks", "kitty", "iterm"),
+                    help="terminal graphics: half-blocks everywhere, or full-res kitty/iTerm2 images [default: auto]")
     io.add_argument("--save-preset", metavar="FILE.toml", help="write the effective settings to a preset file")
     io.add_argument("--overwrite", "-y", action="store_true", help="replace existing output files")
     io.add_argument("-q", "--quiet", action="store_true", help="only print errors")
@@ -130,6 +132,15 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--columns", type=int, default=4, help="tiles per row [default: 4]")
 
     sub.add_parser("options", help="list every effect option with its default")
+
+    t = sub.add_parser("tune", help="interactive tuner: adjust settings and watch the result live",
+                       description="Adjust settings with the keyboard and watch the print update. "
+                                   "On exit the equivalent command line is printed.")
+    t.add_argument("input", help="image (or video: first frame) to tune on")
+    t.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml", help="starting preset")
+    t.add_argument("-o", "--output", help="where 'o' writes the image [default: INPUT.tuned.png]")
+    t.add_argument("--save", default="dotfx-tuned.toml", help="where 'S' saves the preset [default: dotfx-tuned.toml]")
+    add_setting_args(t)
     return parser
 
 
@@ -244,19 +255,19 @@ def render_video(src: Path, dst: Path, s: Settings, args) -> None:
 
     jobs = opts.jobs or os.cpu_count() or 1
     results = ordered_map(_render_frame, limited(), jobs, _init_worker, (s, args.compare))
+    prog = Progress(total, f"{src.name} → {dst.name}") if not (args.quiet or args.preview_only) else None
     first = next(results, None)
     if first is None:
         raise MediaError(f"could not decode any frames from {src}")
     h, w = first.shape[:2]
     if args.preview or args.preview_only:
-        from .preview import terminal_preview
+        from .preview import show
 
-        terminal_preview(first)
+        show(first, args.preview_mode)
         if args.preview_only:
             frames.close()
             return
     writer = open_writer(dst, w, h, fps, src, opts, info.has_audio)
-    prog = Progress(total, f"{src.name} → {dst.name}") if not args.quiet else None
     try:
         for frame in _chain(first, results):
             writer.stdin.write(frame.tobytes())
@@ -290,9 +301,9 @@ def render_image(src: Path, dst: Path | None, s: Settings, args) -> None:
         out = side_by_side(img, out)
     out8 = to_uint8(out)
     if args.preview or args.preview_only:
-        from .preview import terminal_preview
+        from .preview import show
 
-        terminal_preview(out8)
+        show(out8, args.preview_mode)
     if dst is not None and not args.preview_only:
         save_image(out8, dst, args.quality)
 
@@ -359,12 +370,7 @@ def cmd_options(args) -> int:
 def cmd_gallery(args) -> int:
     from PIL import Image, ImageDraw
 
-    src = Path(args.input)
-    if is_video(src):
-        info = probe(src)
-        img = next(read_frames(src, info))
-    else:
-        img = load_image(src)
+    img = first_frame_or_image(Path(args.input))
     names = [n.strip() for n in args.presets.split(",") if n.strip()] or list(PRESETS)
     tile_w = args.tile
     h, w = img.shape[:2]
@@ -397,6 +403,31 @@ def cmd_gallery(args) -> int:
     return 0
 
 
+def first_frame_or_image(src: Path) -> np.ndarray:
+    if is_video(src):
+        info = probe(src)
+        frames = read_frames(src, info, max_frames=1)
+        img = next(frames, None)
+        frames.close()
+        if img is None:
+            raise MediaError(f"could not decode a frame from {src}")
+        return img
+    return load_image(src)
+
+
+def cmd_tune(args) -> int:
+    from .tune import run_tuner
+
+    s = build_settings(args)
+    src = Path(args.input).expanduser()
+    if not src.exists():
+        raise FileNotFoundError(f"no such file: {src}")
+    img = first_frame_or_image(src)
+    base = args.preset[-1] if args.preset else None
+    out = Path(args.output) if args.output else src.with_name(f"{src.stem}.tuned.png")
+    return run_tuner(src, img, s, base, out, Path(args.save))
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] not in COMMANDS and argv[0] not in ("-h", "--help", "--version"):
@@ -407,9 +438,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     try:
-        return {"render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery, "options": cmd_options}[
-            args.command
-        ](args)
+        commands = {
+            "render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery,
+            "options": cmd_options, "tune": cmd_tune,
+        }
+        return commands[args.command](args)
     except (KeyError, ValueError, FileNotFoundError, MediaError) as e:
         msg = e.args[0] if isinstance(e, KeyError) and e.args else e
         print(f"error: {msg}", file=sys.stderr)
