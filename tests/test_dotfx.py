@@ -187,3 +187,28 @@ def test_module_entry_point():
     r = subprocess.run([sys.executable, "-m", "dotfx", "--version"], capture_output=True, text=True,
                        cwd=Path(__file__).resolve().parents[1])
     assert r.returncode == 0 and "dotfx" in r.stdout
+
+
+def test_bad_colors_fail_validation():
+    with pytest.raises(ValueError, match="ink"):
+        Settings().update({"ink": "none"}).validate()
+    with pytest.raises(ValueError, match="paper"):
+        Settings().update({"paper": "notacolor"}).validate()
+    Settings().update({"paper": "none"}).validate()
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_video_color_dither_uses_one_palette(tmp_path):
+    src = tmp_path / "clip.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=0.5",
+         "-pix_fmt", "yuv420p", str(src)],
+        check=True,
+    )
+    out = tmp_path / "frames" / "%03d.png"
+    assert main([str(src), "-e", "dither", "-m", "color", "--colors", "4", "--pixel", "1",
+                 "-o", str(out), "-q", "-j", "1"]) == 0
+    colors = set()
+    for f in sorted((tmp_path / "frames").iterdir()):
+        colors |= {tuple(c) for c in np.asarray(Image.open(f).convert("RGB")).reshape(-1, 3)}
+    assert len(colors) <= 4

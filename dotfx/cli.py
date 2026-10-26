@@ -243,6 +243,20 @@ def render_video(src: Path, dst: Path, s: Settings, args) -> None:
     if opts.max_frames:
         total = min(total, opts.max_frames) if total else opts.max_frames
 
+    if s.effect == "dither" and s.mode == "color":
+        # Pick the palette once so it doesn't flicker from frame to frame.
+        from dataclasses import replace
+
+        from .color import auto_palette, to_hex
+        from .pipeline import prepare
+
+        probe_frames = read_frames(src, info, opts.start, max_frames=1)
+        sample = next(probe_frames, None)
+        probe_frames.close()
+        if sample is not None:
+            pal = auto_palette(prepare(sample, s), s.colors)
+            s = replace(s, mode="palette", palette=" ".join(to_hex(c) for c in pal))
+
     frames = read_frames(src, info, opts.start, opts.duration, opts.fps, opts.max_frames)
 
     def limited():

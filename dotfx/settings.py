@@ -138,6 +138,20 @@ class Settings:
             choices = f.metadata.get("choices")
             if choices and getattr(self, f.name) not in choices:
                 raise ValueError(f"{f.name} must be one of: {', '.join(choices)}")
+        from .color import parse_color, parse_palette
+
+        for name in ("ink", "ink2", "paper"):
+            try:
+                value = parse_color(getattr(self, name))
+            except ValueError as e:
+                raise ValueError(f"{name}: {e}") from None
+            if value is None and name != "paper":
+                raise ValueError(f"{name} can't be 'none' (only paper can be transparent)")
+        for name in ("palette", "cmyk_inks"):
+            try:
+                parse_palette(getattr(self, name))
+            except ValueError as e:
+                raise ValueError(f"{name}: {e}") from None
         if self.cells < 0:
             raise ValueError("cells must be >= 0")
         if self.cell < 1:
