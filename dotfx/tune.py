@@ -39,7 +39,7 @@ RANGES = {
     "softness": (0, 4), "misregister": (0, 5), "dot_size": (0.2, 1.6), "bias": (-0.5, 0.5),
     "rough_scale": (0.5, 5), "bleed": (0, 3), "grain_scale": (0.5, 5), "post_blur": (0, 3), "jpeg": (0, 100),
     "levels": (2, 16), "colors": (2, 32), "scale": (0.1, 2), "shadows": (-1, 1), "highlights": (-1, 1),
-    "auto_levels": (0, 10), "speckle": (0, 3), "sharpen-radius": (0, 5),
+    "auto_levels": (0, 10), "speckle": (0, 3), "temporal": (0, 2),
 }
 NO_BAR = {"seed", "width", "height"}
 # Values offered when cycling free-text settings with the arrow keys.

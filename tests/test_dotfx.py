@@ -86,8 +86,9 @@ def test_python_fallback_matches_reference_kernel():
     wt = np.array([t[2] / div for t in taps])
     a = np.zeros((12, 15), np.int64)
     b = np.zeros((12, 15), np.int64)
-    dz._diffuse_py(img.copy(), pal, dx, dy, wt, True, 1.0, a)
-    dz._diffuse_lists(img.copy(), pal, dx, dy, wt, True, 1.0, b)
+    bias = rng.random((12, 15)) * 0.2 - 0.1
+    dz._diffuse_py(img.copy(), pal, dx, dy, wt, True, 1.0, a, bias)
+    dz._diffuse_lists(img.copy(), pal, dx, dy, wt, True, 1.0, b, bias)
     assert np.array_equal(a, b)
 
 
@@ -424,3 +425,20 @@ def test_pdf_output_is_well_formed(tmp_path):
         r = subprocess.run(["pdftoppm", "-png", "-r", "72", "-singlefile", str(out), str(tmp_path / "r")],
                            capture_output=True)
         assert r.returncode == 0 and Image.open(tmp_path / "r.png").size == (360, 300)
+
+
+def test_temporal_anchoring_steadies_error_diffusion():
+    rng = np.random.default_rng(0)
+    base = photo().astype(np.float32)
+    frames = [np.clip(base + rng.normal(0, 1.5, base.shape), 0, 255).astype(np.uint8) for _ in range(4)]
+
+    def flips(temporal):
+        s = Settings().update({"effect": "dither", "pixel": 2, "algorithm": "floyd-steinberg", "temporal": temporal})
+        outs = [render(f, s)[..., 0] > 0.5 for f in frames]
+        return np.mean([np.mean(a != b) for a, b in zip(outs, outs[1:])]), outs
+
+    loose, outs0 = flips(0)
+    steady, outs1 = flips(1.5)
+    assert steady < loose / 3
+    # Same overall tone either way.
+    assert abs(outs0[0].mean() - outs1[0].mean()) < 0.02

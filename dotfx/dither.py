@@ -154,8 +154,9 @@ KERNELS: dict[str, tuple[float, list[tuple[int, int, float]]]] = {
 }
 
 
-def _diffuse_py(img, palette, dx, dy, wt, serpentine, strength, out):
-    """Reference error diffusion. img: HxWxC (modified), palette: KxC, out: HxW."""
+def _diffuse_py(img, palette, dx, dy, wt, serpentine, strength, out, bias):
+    """Reference error diffusion. img: HxWxC (modified), palette: KxC, out: HxW.
+    bias (HxW) shifts only the decision at each pixel, never the diffused error."""
     h, w, ch = img.shape
     k = palette.shape[0]
     n = wt.shape[0]
@@ -165,10 +166,11 @@ def _diffuse_py(img, palette, dx, dy, wt, serpentine, strength, out):
             x = w - 1 - i if rev else i
             best = 0
             bd = 1e30
+            b = bias[y, x]
             for p in range(k):
                 d = 0.0
                 for c in range(ch):
-                    t = img[y, x, c] - palette[p, c]
+                    t = img[y, x, c] + b - palette[p, c]
                     d += t * t
                 if d < bd:
                     bd = d
@@ -187,10 +189,11 @@ def _diffuse_py(img, palette, dx, dy, wt, serpentine, strength, out):
                         img[yy, xx, c] = min(max(v, -0.5), 1.5)
 
 
-def _diffuse_lists(img, palette, dx, dy, wt, serpentine, strength, out):
+def _diffuse_lists(img, palette, dx, dy, wt, serpentine, strength, out, bias):
     """Pure-Python fallback on nested lists (~20x faster than indexing numpy)."""
     h, w, ch = img.shape
     rows = [img[y].tolist() for y in range(h)]
+    brows = bias.tolist()
     pal = palette.tolist()
     taps = list(zip(dx.tolist(), dy.tolist(), wt.tolist()))
     k = len(pal)
@@ -206,8 +209,9 @@ def _diffuse_lists(img, palette, dx, dy, wt, serpentine, strength, out):
         xs = range(w - 1, -1, -1) if rev else range(w)
         for x in xs:
             px = row[x]
+            b = brows[y][x]
             if gray_levels is not None:
-                v = px[0]
+                v = px[0] + b
                 best = 0
                 bd = abs(v - gray_levels[0])
                 for p in range(1, k):
@@ -220,7 +224,7 @@ def _diffuse_lists(img, palette, dx, dy, wt, serpentine, strength, out):
                     q = pal[p]
                     d = 0.0
                     for c in range(ch):
-                        t = px[c] - q[c]
+                        t = px[c] + b - q[c]
                         d += t * t
                     if d < bd:
                         bd, best = d, p
@@ -258,7 +262,8 @@ def _diffuse_fast(*args):
     return _DIFFUSE(*args)
 
 
-def error_diffuse(img: np.ndarray, palette: np.ndarray, algorithm: str, serpentine=True, strength=1.0) -> np.ndarray:
+def error_diffuse(img: np.ndarray, palette: np.ndarray, algorithm: str, serpentine=True, strength=1.0,
+                  bias: np.ndarray | None = None) -> np.ndarray:
     """Return palette indices (HxW) for img (HxWxC) by error diffusion."""
     div, taps = KERNELS[algorithm]
     dx = np.array([t[0] for t in taps], dtype=np.int64)
@@ -266,7 +271,10 @@ def error_diffuse(img: np.ndarray, palette: np.ndarray, algorithm: str, serpenti
     wt = np.array([t[2] / div for t in taps], dtype=np.float64)
     work = np.ascontiguousarray(img, dtype=np.float64)
     out = np.zeros(img.shape[:2], dtype=np.int64)
-    _diffuse_fast(work, np.ascontiguousarray(palette, dtype=np.float64), dx, dy, wt, bool(serpentine), float(strength), out)
+    if bias is None:
+        bias = np.zeros(img.shape[:2])
+    _diffuse_fast(work, np.ascontiguousarray(palette, dtype=np.float64), dx, dy, wt, bool(serpentine),
+                  float(strength), out, np.ascontiguousarray(bias, dtype=np.float64))
     return out
 
 
@@ -294,7 +302,15 @@ def quantize(img: np.ndarray, palette: np.ndarray, algorithm: str, s, rng: np.ra
     h, w = img.shape[:2]
     if algorithm in KERNELS:
         biased = img + s.bias
-        return error_diffuse(biased, palette, algorithm, s.serpentine, s.diffusion)
+        anchor = None
+        if s.temporal > 0:
+            # Anchor decisions to a fixed blue-noise pattern: where the image
+            # doesn't change, the same pixels win from frame to frame instead of
+            # the error rerouting chaotically. Tone is unaffected (the nudge
+            # never enters the diffused error).
+            spread = default_spread(palette)
+            anchor = s.temporal * spread * (tile(blue_noise(64), h, w) - 0.5)
+        return error_diffuse(biased, palette, algorithm, s.serpentine, s.diffusion, anchor)
     if algorithm == "random":
         t = rng.random((h, w), dtype=np.float32)
     else:

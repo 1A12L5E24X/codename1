@@ -113,6 +113,10 @@ class Settings:
     size_by_tone: bool = opt(False, "Scale each cell's dot by its tone instead of switching colors.", "dither")
     diffusion: float = opt(1.0, "Error diffusion strength (0..1).", "dither")
     serpentine: bool = opt(True, "Alternate scan direction for error diffusion.", "dither")
+    temporal: float = opt(
+        0.0, "Steadier error diffusion for video (0..2): anchors each pixel's decision to a fixed "
+        "pattern so static areas stop shimmering. Video turns it on (1) automatically.", "dither",
+    )
     spread: float = opt(0.0, "Ordered dither spread (0 = automatic from the palette).", "dither")
     bias: float = opt(0.0, "Shift the dither threshold (-0.5..0.5, + = lighter).", "dither")
 

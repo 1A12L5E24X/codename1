@@ -261,6 +261,13 @@ def render_video(src: Path, dst: Path, s: Settings, args) -> None:
     if opts.max_frames:
         total = min(total, opts.max_frames) if total else opts.max_frames
 
+    from .dither import KERNELS
+
+    if s.effect == "dither" and s.algorithm in KERNELS and args.temporal is None:
+        from dataclasses import replace as _replace
+
+        s = _replace(s, temporal=1.0)
+        log(args, f"note: steadying {s.algorithm} for video (--temporal 0 to turn off)")
     if s.effect == "dither" and s.mode == "color":
         # Pick the palette once so it doesn't flicker from frame to frame.
         from dataclasses import replace
