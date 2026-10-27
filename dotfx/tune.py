@@ -255,8 +255,9 @@ class Tuner:
         y0 = int(np.clip(self.pan[1] * h - vh / 2, 0, max(h - vh, 0)))
         crop = img[y0:y0 + vh, x0:x0 + vw]
         tw, tt = max(1, int(crop.shape[1] / z)), max(2, int(crop.shape[0] / z))
-        method = Image.Resampling.NEAREST if z <= 1 else Image.Resampling.BOX
-        return np.asarray(Image.fromarray(crop).resize((tw, tt), method))
+        if z > 1:
+            return fit_resize(np.ascontiguousarray(crop), tw, tt)  # smoothed: no moire
+        return np.asarray(Image.fromarray(crop).resize((tw, tt), Image.Resampling.NEAREST))
 
     def sharp_crop(self, cols: int, rows: int) -> tuple[np.ndarray, int, int] | None:
         """Full-resolution region for graphics terminals, and its size in cells."""

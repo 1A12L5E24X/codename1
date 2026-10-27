@@ -15,8 +15,17 @@ dotfx has two engines:
   dither pixel can be drawn as a square, circle, plus, ring and more.
 
 Both engines share the same tone controls and print-texture layer: ragged dot
-edges, ink bleed, uneven ink, paper grain, dust and scan softness. Video goes
-through ffmpeg, with audio kept and frames rendered in parallel.
+edges, ink bleed, uneven ink, paper grain, dust, scan softness, JPEG wear and a
+paper-clipping edge. Video goes through ffmpeg, with audio kept and frames
+rendered in parallel.
+
+Around those engines:
+
+- **`dotfx match`** measures a reference print and writes a preset that recreates it.
+- **`dotfx tune`** is a live terminal editor for every setting.
+- **`dotfx live`** runs a webcam or video stream through a preset in the terminal.
+- **SVG and PDF** output gives vector dots for print and plotters.
+- **Masks** give the subject and the background different looks.
 
 | `newsprint` | `sky-dither` |
 |---|---|
@@ -43,6 +52,10 @@ dotfx clip.mov -p bitmap --width 480 -o loop.gif
 dotfx shots/ -p riso -o printed/             # a whole folder
 dotfx photo.jpg -p newsprint --preview-only  # just look, in the terminal
 dotfx tune photo.jpg -p newsprint            # adjust interactively
+dotfx match reference.jpg                    # → reference.toml, a preset that recreates it
+dotfx photo.jpg -p reference.toml            # … then use it on anything
+dotfx photo.jpg -p newsprint -o poster.svg   # vector dots (also .pdf)
+dotfx live                                   # webcam through a preset, in the terminal
 dotfx gallery photo.jpg                      # every preset on one sheet
 ```
 
@@ -68,6 +81,7 @@ any resolution.
 | `newsprint-fine` | the same print with a finer screen (140 across) for more detail |
 | `newsprint-coarse` | blown up to 45 big dots across, poster-like |
 | `newsprint-clean` | the same screen without wear: crisp dots on white |
+| `newsprint-clipping` | cut out like a clipping, with a soft shadow on white, as along the reference's top edge |
 | `newsprint-faded` | an old yellowed clipping: washed-out ink, warm paper, heavy grain |
 | `sky-dither` | **the blue sky reference**: 4×4 Bayer, 206 cells across. Dark blue round dots sit over a light-blue tint that fills only the blue sky; clouds get dots on white. The red channel drives tone, so the sky goes dark. Soft, JPEG-compressed finish (the compression also grays the small dots, as in the original). |
 | `sky-dither-clean` | the same without blur or compression |
@@ -132,15 +146,55 @@ cell = 7
 roughness = 0.5
 ```
 
+## Recreate a reference: `dotfx match`
+
+```sh
+dotfx match reference.jpg --check check.png
+dotfx photo.jpg -p reference.toml
+```
+
+`match` measures a halftone or dither image and writes a preset that
+recreates it:
+
+- **Pattern:** whether it's a halftone screen, an ordered (Bayer) dither or a
+  blue-noise dither, plus the dot spacing and screen angle.
+- **Colors:** ink, paper and any tint; separate per-color screen angles mean a
+  CMYK or RGB print, and dots in many colors on black mean `color` mode.
+- **Finish:** edge softness, paper grain, and the JPEG quality the image was
+  saved at.
+
+It then calibrates gamma, contrast and the tint range by re-printing a
+blurred-back copy of the reference and comparing. `--check` saves that
+comparison side by side. On the two references the bundled presets were built
+from, it gets within about 2% average tone.
+
+The preset sizes dots with `cells`, so it works at any resolution. Some things
+it can't decide from the image alone, and it says so:
+
+- whether a tint should follow tone or color (`--tint-by`)
+- the JPEG quality of images that are pure black and white everywhere
+
+A two-ink duotone is read as CMYK.
+
 ## Interactive tuner
+
+![dotfx tune](docs/tune.png)
 
 ```sh
 dotfx tune photo.jpg -p newsprint
+dotfx tune clip.mp4 -p comic          # videos: scrub with , . < >
 ```
 
-The tuner shows a settings list beside a live preview. The `1:1` zoom shows the
-actual dots. Images larger than 1600px start at a reduced `scale` so the preview
-stays responsive. The scale appears in the list like any other setting.
+The settings panel shows sliders, switches, choices and color swatches, and
+marks every value you've changed from the preset with •. Rendering runs in the
+background, so keys never wait.
+
+In kitty, Ghostty, iTerm2 and WezTerm the preview is the real full-resolution
+image (`g` toggles it). Other terminals get half-blocks; use `z` to zoom to 1:1
+there to judge the dots.
+
+Images larger than 1600px start at a reduced `scale` so the preview stays
+responsive. The scale appears in the list like any other setting.
 
 | key | action |
 |---|---|
@@ -152,6 +206,9 @@ stays responsive. The scale appears in the list like any other setting.
 | p / P | next / previous preset |
 | z | zoom: fit, ¼, ½, 1:1, 2× |
 | w a s d | pan while zoomed |
+| , . / < > | video: step one frame / jump 5 s |
+| g | sharp (graphics) or half-block preview |
+| ? | key help |
 | o | write the full-resolution image |
 | S | save the settings as a preset TOML |
 | c | show the equivalent command line |
@@ -217,6 +274,27 @@ like blue sky.
 - `--size-by-tone`: dot size follows tone instead of color
 - `--diffusion`: error strength
 - `--serpentine`, `--spread`, `--bias`
+- `--temporal`: steadies error diffusion in video (see below)
+
+**Masks**: give part of the image this look and the rest something else.
+
+- `--mask` takes an image (white = this look) or a built-in:
+  - `bright`, `dark`: by brightness
+  - `colorful`: e.g. a red jacket or blue sky
+  - `center`
+- `--background` decides the rest: a preset name or `.toml`, `original` (the
+  photo itself), `paper`, or `none` (transparent).
+- Fine-tune with `--mask-threshold`, `--mask-feather` and `--mask-invert`.
+
+```sh
+dotfx photo.jpg -p comic --mask colorful --background newsprint-clean
+dotfx photo.jpg -p color-dots --mask center --background original
+dotfx photo.jpg -p riso --mask subject.png --background paper
+```
+
+**Clipping**: `--clip-edge cut|torn|wavy` shows the print as a paper clipping
+on a `--backdrop` color (or `none`), with `--clip-margin`, `--clip-rough` and
+`--clip-shadow`. Torn edges show the lighter core of the paper.
 
 **Texture**: `--roughness --rough-scale --ink-noise --ink-opacity --bleed --grain
 --grain-scale --speckle --glow --vignette --post-blur --jpeg`. `--jpeg Q`
@@ -237,15 +315,55 @@ dotfx in.mp4 -p stipple -o frames/%05d.png        # image sequence
 dotfx in.mp4 -p comic --compare                   # original | effect side by side
 ```
 
-For video, prefer ordered dithers (`bayer*`, `cluster*`, `bluenoise`, `lines`)
-and halftones. They stay put from frame to frame. Error diffusion (Floyd–Steinberg,
-Atkinson…) recomputes its whole pattern every frame, so it shimmers. That can be
-a look in its own right, but it costs bitrate.
+Halftones and ordered dithers stay put from frame to frame. Error diffusion
+(Floyd–Steinberg, Atkinson…) is chaotic: a little sensor noise reroutes the error
+and the whole pattern shimmers. For video, dotfx turns on `--temporal 1`. It
+nudges each pixel's decision toward a fixed pattern, so static areas keep the
+same dots, and it never changes the tone. On a noisy static shot it reduces the
+cells that flip per frame like this:
+
+| algorithm | without | with `--temporal 1` |
+|---|---|---|
+| Floyd–Steinberg | 29% | 6% (3% at `1.5`) |
+| Atkinson | 20% | 0.6% |
+
+Pass `--temporal 0` to keep the shimmer.
 
 Other flags: `--fps`, `--max-frames`, `--crf`, `--encoder-preset`, `--no-audio`,
 and `-j/--jobs` for the number of worker processes (default: all cores). Screen
 geometry and static textures are cached between frames, so a 1080p halftone
 takes about 0.5–1 s per frame per core.
+
+## Live
+
+```sh
+dotfx live                       # first camera
+dotfx live 1 -p comic            # another camera
+dotfx live clip.mp4 -p riso      # a file (looped) or a stream URL
+```
+
+Keys: `p`/`P` preset, `[` `]` dot size, space pause, `s` snapshot (PNG), `r`
+record (MP4), `q` quit. Cameras are read through ffmpeg: v4l2 on Linux,
+AVFoundation on macOS and DirectShow on Windows. `--capture-width` sets the
+processing size. At the default 480 px, rendering takes 13–90 ms a frame here
+(about 11–75 fps, from `bitmap` to `color-dots`), plus display time.
+
+## Vector output (SVG / PDF)
+
+```sh
+dotfx photo.jpg -p newsprint -o poster.svg
+dotfx photo.jpg -p comic -o print.pdf --dpi 300
+```
+
+Dots are written as real shapes. Each round dot is sized so that the inked area
+inside its cell equals the tone, which stays exact where neighboring dots
+overlap. Square, diamond, line and ellipse spots, and dither cells, are drawn
+as their own shapes; other spots fall back to round dots. CMYK and duotone
+plates overprint with multiply blending, like ink.
+
+Raster-only effects (grain, roughness, blur, JPEG, clipping…) are left out,
+and the tool lists which ones. `--dpi` sets the PDF page size from the image's
+pixel size.
 
 ## Terminal preview
 
@@ -253,6 +371,9 @@ takes about 0.5–1 s per frame per core.
 Ghostty, iTerm2 and WezTerm the image is shown at full resolution through their
 inline-image protocols. Other terminals get truecolor half-blocks. Use
 `--preview-mode blocks|kitty|iterm` to choose.
+
+The interactive tools (`tune`, `live`) work in any terminal with truecolor,
+including Windows Terminal and Windows 10+ consoles.
 
 ## How it works
 
@@ -266,6 +387,11 @@ inline-image protocols. Other terminals get truecolor half-blocks. Use
   with a threshold map or error diffusion, and each pixel is drawn with an
   antialiased shape tile. Blue noise is generated once with void-and-cluster
   and cached in `~/.cache/dotfx`.
+- **Match**: the reference's 2-D spectrum gives the dot lattice. In a halftone
+  the screen's base frequency is the strongest peak. A Bayer dither instead
+  puts its strongest energy in a 45° checkerboard, at frequency 1/(2 × cell),
+  with weaker, tone-dependent patterns around it. JPEG quality comes from the
+  quantization comb in each 8×8 block's DCT coefficients.
 - **Texture**: roughness moves dot edges by a few pixels using value noise.
   Bleed spreads ink into nearby paper. Ink noise varies density across the
   page. Grain, speckle and post-blur are applied to the composite. Multi-ink
