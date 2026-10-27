@@ -100,6 +100,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="start from a preset (repeatable; later ones override earlier)")
     io.add_argument("--format", help="output extension when -o is a directory or omitted (e.g. png, jpg, mp4, gif)")
     io.add_argument("--quality", type=int, default=95, help="JPEG/WebP quality [default: 95]")
+    io.add_argument("--dpi", type=float, default=96,
+                    help="PDF output: image pixels per inch, sets the page size [default: 96]")
     io.add_argument("--compare", action="store_true", help="put the original next to the result")
     io.add_argument("--preview", action="store_true", help="also draw the result in the terminal")
     io.add_argument("--preview-only", action="store_true", help="draw in the terminal and don't write a file")
@@ -324,8 +326,25 @@ def _chain(first, rest):
     yield from rest
 
 
+def render_vector(img: np.ndarray, dst: Path, s: Settings, args) -> None:
+    from .vector import build, to_pdf, to_svg
+
+    doc = build(img, s)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.suffix.lower() == ".svg":
+        dst.write_text(to_svg(doc))
+    else:
+        dst.write_bytes(to_pdf(doc, dpi=args.dpi))
+    for note in doc.notes:
+        log(args, f"  note: {note}")
+
+
 def render_image(src: Path, dst: Path | None, s: Settings, args) -> None:
     img = load_image(src)
+    if dst is not None and dst.suffix.lower() in (".svg", ".pdf") and not args.preview_only:
+        render_vector(img, dst, s, args)
+        if not (args.preview or args.preview_only):
+            return
     out = render(img, s)
     if args.compare:
         out = side_by_side(img, out)
@@ -334,7 +353,7 @@ def render_image(src: Path, dst: Path | None, s: Settings, args) -> None:
         from .preview import show
 
         show(out8, args.preview_mode)
-    if dst is not None and not args.preview_only:
+    if dst is not None and not args.preview_only and dst.suffix.lower() not in (".svg", ".pdf"):
         save_image(out8, dst, args.quality)
 
 

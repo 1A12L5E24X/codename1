@@ -12,7 +12,7 @@ from . import dither as dz
 from . import halftone as ht
 from .adjust import adjust
 from .color import auto_palette, parse_color, parse_palette
-from .ops import fbm_noise, gaussian_blur, luminance, resize, smoothstep, value_noise
+from .ops import LUMA, fbm_noise, gaussian_blur, luminance, resize, smoothstep, value_noise
 from .settings import Settings
 
 
@@ -264,39 +264,40 @@ def dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
     return out
 
 
-def _dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
-    h, w = img.shape[:2]
-    p = int(s.pixel)
-    sh, sw = -(-h // p), -(-w // p)
-    small = img if p == 1 else np.clip(resize(img, sw, sh, "box"), 0, 1)
+@dataclass
+class DitherGrid:
+    """The dithered image at one entry per cell (shared by raster and vector output)."""
+
+    colors: np.ndarray  # sh x sw x 3, the color each cell prints
+    tone: np.ndarray  # sh x sw, ink amount 0..1 (for mono: 1 - gray level)
+    tint_on: np.ndarray | None  # sh x sw bool: cells carrying the tint
+    ink: np.ndarray
+    mono: bool
+
+
+def dither_grid(small: np.ndarray, s: Settings, rng) -> DitherGrid:
+    """Quantise an image that already has one pixel per dither cell."""
     ink = parse_color(s.ink)
     paper = parse_color(s.paper)
     paper_rgb = np.array(paper if paper is not None else (1.0, 1.0, 1.0), np.float32)
     ink_rgb = np.array(ink if ink is not None else (0.0, 0.0, 0.0), np.float32)
     algo = s.algorithm
-
-    tone = None  # per small pixel darkness (0..1) for size_by_tone
-    tint_layer = None
+    tint_on = None
     if s.mode in ("mono", "gray"):
-        n = s.levels
-        lv = np.linspace(0, 1, n, dtype=np.float32)
+        lv = np.linspace(0, 1, s.levels, dtype=np.float32)
         light = lightness(small, s.channel)
         idx = dz.quantize(light[..., None], lv[:, None], algo, s, rng)
-        tint = parse_color(s.tint)
-        if tint is not None:
+        if parse_color(s.tint) is not None:
             # Dithered with the same threshold map, so tint cells nest around the
             # ink cells; drawn as whole cells to read as a flat second color.
             tint_light = 1 - tint_amount(small, s)
             two = np.array([[0.0], [1.0]], np.float32)
-            on = dz.quantize(tint_light[..., None], two, algo, s, rng) == 0
-            on_full = np.repeat(np.repeat(on, p, axis=0), p, axis=1)[:h, :w]
-            tint_layer = Layer(on_full.astype(np.float32), np.array(tint, np.float32))
+            tint_on = dz.quantize(tint_light[..., None], two, algo, s, rng) == 0
         level = lv[idx]
         colors = ink_rgb + (paper_rgb - ink_rgb) * level[..., None]
-        tone = 1 - level
-    elif s.mode == "rgb":
-        n = s.levels
-        lv = np.linspace(0, 1, n, dtype=np.float32)
+        return DitherGrid(colors, 1 - level, tint_on, ink_rgb, True)
+    if s.mode == "rgb":
+        lv = np.linspace(0, 1, s.levels, dtype=np.float32)
         chans = []
         for i in range(3):
             # Decorrelate channels so ordered patterns don't stack into gray.
@@ -309,15 +310,27 @@ def _dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
                 idx = dz.quantize(chan, lv[:, None], algo, s, sub_rng)
             chans.append(lv[idx])
         colors = np.stack(chans, axis=-1)
-        tone = 1 - luminance(colors)
-    elif s.mode in ("palette", "color"):
+        return DitherGrid(colors, 1 - luminance(colors), None, ink_rgb, False)
+    if s.mode in ("palette", "color"):
         pal = parse_palette(s.palette) if s.mode == "palette" else auto_palette(small, s.colors)
         idx = dz.quantize(small, pal, algo, s, rng)
-        colors = pal[idx]
-        pal_l = luminance(pal)
+        pal_l = pal @ LUMA  # (a palette is 2-D, which luminance() would take for a gray image)
         tone = 1 - (pal_l[idx] - pal_l.min()) / max(float(np.ptp(pal_l)), 1e-6)
-    else:
-        raise ValueError(f"mode {s.mode!r} is not supported by dither")
+        return DitherGrid(pal[idx], tone, None, ink_rgb, False)
+    raise ValueError(f"mode {s.mode!r} is not supported by dither")
+
+
+def _dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
+    h, w = img.shape[:2]
+    p = int(s.pixel)
+    sh, sw = -(-h // p), -(-w // p)
+    small = img if p == 1 else np.clip(resize(img, sw, sh, "box"), 0, 1)
+    grid = dither_grid(small, s, rng)
+    colors, tone, ink_rgb = grid.colors, grid.tone, grid.ink
+    tint_layer = None
+    if grid.tint_on is not None:
+        on_full = np.repeat(np.repeat(grid.tint_on, p, axis=0), p, axis=1)[:h, :w]
+        tint_layer = Layer(on_full.astype(np.float32), np.array(parse_color(s.tint), np.float32))
 
     def up(a):
         return np.repeat(np.repeat(a, p, axis=0), p, axis=1)[:h, :w]

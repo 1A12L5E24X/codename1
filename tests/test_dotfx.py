@@ -367,3 +367,60 @@ def test_tuner_draws_without_a_terminal(tmp_path, monkeypatch, capsys):
     t.adjust(1)  # effect: halftone -> dither
     assert t.s.effect == "dither"
     assert "-e dither" in t.command_line() or "--effect dither" in t.command_line()
+
+
+def test_palette_size_by_tone_uses_one_tone_per_cell():
+    s = Settings().update({"effect": "dither", "mode": "palette", "palette": "gameboy", "pixel": 4,
+                           "size_by_tone": True, "cell_shape": "circle"})
+    out = render(gradient(), s)
+    assert out.shape == (64, 96, 3) and np.isfinite(out).all()
+
+
+# --- vector output ------------------------------------------------------------------
+
+
+def test_vector_dot_area_is_tone_accurate():
+    from dotfx.vector import _clipped_circle_area, diamond_radius, dot_radius
+
+    for t in (0.05, 0.3, 0.5, 0.78, 0.9, 0.99):
+        assert abs(float(_clipped_circle_area(np.array([dot_radius(np.array(t))]))[0]) - t) < 2e-3
+        r = float(diamond_radius(np.array(t)))
+        area = 2 * r * r if r <= 0.5 else 1 - 2 * (1 - r) ** 2
+        assert abs(area - t) < 1e-6
+
+
+def test_svg_output(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    src = tmp_path / "in.png"
+    Image.fromarray(photo()).save(src)
+    out = tmp_path / "out.svg"
+    assert main([str(src), "-p", "newsprint", "-o", str(out), "-q"]) == 0
+    root = ET.parse(out).getroot()
+    assert root.get("width") == "360" and root.get("height") == "300"
+    circles = root.findall(".//{http://www.w3.org/2000/svg}circle")
+    assert len(circles) > 500
+    out2 = tmp_path / "dither.svg"
+    assert main([str(src), "-p", "gameboy", "-o", str(out2), "-q"]) == 0
+    assert len(ET.parse(out2).getroot().findall(".//{http://www.w3.org/2000/svg}rect")) > 50
+
+
+def test_pdf_output_is_well_formed(tmp_path):
+    import re
+
+    src = tmp_path / "in.png"
+    Image.fromarray(photo()).save(src)
+    out = tmp_path / "out.pdf"
+    assert main([str(src), "-p", "comic", "-o", str(out), "-q", "--dpi", "72"]) == 0
+    data = out.read_bytes()
+    assert data.startswith(b"%PDF-1.4") and data.rstrip().endswith(b"%%EOF")
+    assert b"/MediaBox [0 0 360 300]" in data
+    # Every xref offset must point at its object header.
+    xref = int(re.search(rb"startxref\n(\d+)", data).group(1))
+    offsets = [int(m) for m in re.findall(rb"(\d{10}) 00000 n", data[xref:])]
+    for i, off in enumerate(offsets, start=1):
+        assert data[off:].startswith(f"{i} 0 obj".encode())
+    if shutil.which("pdftoppm"):
+        r = subprocess.run(["pdftoppm", "-png", "-r", "72", "-singlefile", str(out), str(tmp_path / "r")],
+                           capture_output=True)
+        assert r.returncode == 0 and Image.open(tmp_path / "r.png").size == (360, 300)
