@@ -30,7 +30,7 @@ from .pipeline import render, to_uint8
 from .presets import PRESETS, load_preset, to_toml
 from .settings import Settings
 
-COMMANDS = ("render", "presets", "gallery", "options", "tune", "match")
+COMMANDS = ("render", "presets", "gallery", "options", "tune", "match", "live")
 
 GROUP_TITLES = {
     "effect": "effect",
@@ -41,6 +41,7 @@ GROUP_TITLES = {
     "dither": "dither (--effect dither)",
     "texture": "print texture",
     "clipping": "paper clipping",
+    "mask": "mask (different looks for subject and background)",
 }
 
 
@@ -136,6 +137,18 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--columns", type=int, default=4, help="tiles per row [default: 4]")
 
     sub.add_parser("options", help="list every effect option with its default")
+
+    lv = sub.add_parser("live", help="webcam (or any video/stream) through a preset, live in the terminal",
+                        description="Live preview from a camera, video file or stream URL. Keys: p/P preset, "
+                                    "[ ] dot size, space pause, s snapshot, r record, q quit.")
+    lv.add_argument("source", nargs="?", default="",
+                    help="camera number or device (default: the first camera), or a video file / stream URL")
+    lv.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml", help="starting preset")
+    lv.add_argument("--capture-width", type=int, default=480, help="processing width in pixels [default: 480]")
+    lv.add_argument("--fps", type=float, default=15, help="capture frame rate [default: 15]")
+    lv.add_argument("-o", "--output", default=".", help="folder for snapshots and recordings [default: .]")
+    lv.add_argument("--preview-mode", default="auto", choices=("auto", "blocks", "kitty", "iterm"))
+    add_setting_args(lv)
 
     m = sub.add_parser(
         "match", help="measure a reference print and write a preset that recreates it",
@@ -544,6 +557,16 @@ def first_frame_or_image(src: Path) -> np.ndarray:
     return load_image(src)
 
 
+def cmd_live(args) -> int:
+    from .live import run_live
+
+    s = build_settings(args)
+    base = args.preset[-1] if args.preset else None
+    out = Path(args.output).expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    return run_live(args.source, s, base, args.capture_width, args.fps, out, args.preview_mode)
+
+
 def cmd_tune(args) -> int:
     from .tune import run_tuner
 
@@ -577,7 +600,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         commands = {
             "render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery,
-            "options": cmd_options, "tune": cmd_tune, "match": cmd_match,
+            "options": cmd_options, "tune": cmd_tune, "match": cmd_match, "live": cmd_live,
         }
         return commands[args.command](args)
     except (KeyError, ValueError, FileNotFoundError, MediaError) as e:

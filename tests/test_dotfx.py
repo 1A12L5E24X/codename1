@@ -456,3 +456,78 @@ def test_clipping_edges(edge):
     # Transparent backdrop gives an alpha channel with a soft shadow.
     t = render(photo(), Settings().update({"cell": 6, "clip_edge": edge, "backdrop": "none"}))
     assert t.shape[2] == 4 and t[0, 0, 3] < 0.2 and t[150, 180, 3] > 0.99
+
+
+# --- masks, live, windows -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("mask", ["bright", "dark", "colorful", "center"])
+def test_masks_split_the_image(mask):
+    s = Settings().update({"cell": 6, "mask": mask, "background": "paper", "paper": "#ff0000",
+                           "mask_feather": 0})
+    out = render(photo(), s)
+    red = (out[..., 0] > 0.95) & (out[..., 1] < 0.05)
+    # Some of the image got the look, some got the (red) paper background.
+    assert 0.02 < red.mean() < 0.98
+
+
+def test_mask_file_and_preset_background(tmp_path):
+    m = np.zeros((300, 360), np.uint8)
+    m[:, :180] = 255
+    path = tmp_path / "m.png"
+    Image.fromarray(m).save(path)
+    s = Settings().update({"cell": 6, "ink": "#000000", "mask": str(path), "background": "gameboy",
+                           "mask_feather": 0})
+    out = render(photo(), s)
+    left, right = out[:, :170], out[:, 190:]
+    sat = lambda a: (a.max(-1) - a.min(-1)).mean()  # noqa: E731
+    assert sat(left) < 0.02 and sat(right) > 0.1  # gray halftone left, green gameboy right
+    with pytest.raises(ValueError):
+        render(photo(), Settings().update({"mask": str(tmp_path / "missing.png")}))
+
+
+def test_camera_inputs(monkeypatch):
+    from dotfx import live
+
+    monkeypatch.setattr(live.sys, "platform", "linux")
+    assert live.camera_input("") == ["-f", "v4l2", "-i", "/dev/video0"]
+    assert live.camera_input("/dev/video2")[-1] == "/dev/video2"
+    monkeypatch.setattr(live.sys, "platform", "darwin")
+    assert live.camera_input("1")[-1] == "1:none"
+    monkeypatch.setattr(live.sys, "platform", "win32")
+    assert live.camera_input("Logitech C920")[-1] == "video=Logitech C920"
+    assert live.is_camera("") and live.is_camera("0") and not live.is_camera("clip.mp4")
+
+
+def test_windows_key_decoding(monkeypatch):
+    import types
+
+    from dotfx import term
+
+    queue = list("\xe0H" "\xe0M" "q" "\r")
+    fake = types.SimpleNamespace(kbhit=lambda: bool(queue), getwch=lambda: queue.pop(0))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake)
+    monkeypatch.setattr(term, "WINDOWS", True)
+    kb = term.Keyboard()
+    assert [kb.read(0.1) for _ in range(4)] == ["up", "right", "q", "enter"]
+    assert kb.read(0.05) == ""
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_live_capture_reads_a_file(tmp_path):
+    from dotfx.live import Capture
+
+    src = tmp_path / "clip.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=2",
+                    "-pix_fmt", "yuv420p", str(src)], check=True)
+    cap = Capture(str(src), 80, 10)
+    try:
+        import time
+
+        for _ in range(50):
+            if cap.frame is not None:
+                break
+            time.sleep(0.05)
+        assert cap.frame is not None and cap.frame.shape == (60, 80, 3)
+    finally:
+        cap.close()

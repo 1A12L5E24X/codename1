@@ -136,6 +136,19 @@ class Settings:
         0, "Re-encode as a JPEG of this quality (1-100, 0 = off): blocky, color-bled web "
         "compression, like an image that's been saved and shared a few times.", "texture",
     )
+    # --- mask -----------------------------------------------------------------
+    mask: str = opt(
+        "", "Apply this look only to part of the image: a mask image (white = this look) or "
+        "bright, dark, colorful, center.", "mask", metavar="MASK",
+    )
+    background: str = opt(
+        "original", "What the rest gets: a preset name or .toml, original (the photo), paper, or none.",
+        "mask", metavar="LOOK",
+    )
+    mask_threshold: float = opt(0.5, "Where the built-in masks switch over (0..1).", "mask")
+    mask_feather: float = opt(2.0, "Soften the mask edge (pixels).", "mask")
+    mask_invert: bool = opt(False, "Swap which part gets the look.", "mask")
+
     # --- clipping -------------------------------------------------------------
     clip_edge: str = opt(
         "none", "Show the print as a paper clipping on a backdrop: cut (scissors), torn or wavy edge.",

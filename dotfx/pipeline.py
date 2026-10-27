@@ -408,9 +408,79 @@ def composite(layers: list[Layer], s: Settings, h: int, w: int, seed: int) -> np
     return out
 
 
+MASK_KEYS = ("bright", "dark", "colorful", "center")
+
+
+def make_mask(src: np.ndarray, s: Settings) -> np.ndarray:
+    """0..1 mask at the size of the prepared source (1 = gets the look)."""
+    h, w = src.shape[:2]
+    t = s.mask_threshold
+    if s.mask == "bright":
+        m = smoothstep(t - 0.1, t + 0.1, luminance(src))
+    elif s.mask == "dark":
+        m = 1 - smoothstep(t - 0.1, t + 0.1, luminance(src))
+    elif s.mask == "colorful":
+        mx = src.max(axis=-1)
+        sat = (mx - src.min(axis=-1)) / np.maximum(mx, 1e-4)
+        m = smoothstep(t * 0.6 - 0.08, t * 0.6 + 0.08, sat)
+    elif s.mask == "center":
+        yy, xx = np.mgrid[0:h, 0:w]
+        r = np.hypot((xx + 0.5) / w - 0.5, (yy + 0.5) / h - 0.5) * 2
+        m = 1 - smoothstep(t * 1.2 - 0.15, t * 1.2 + 0.15, r)
+    else:
+        from PIL import Image
+
+        try:
+            with Image.open(s.mask) as im:
+                m = np.asarray(im.convert("L").resize((w, h), Image.Resampling.BILINEAR), np.float32) / 255
+        except OSError as e:
+            raise ValueError(f"mask: can't read {s.mask!r} ({e})") from None
+    m = gaussian_blur(m.astype(np.float32), s.mask_feather) if s.mask_feather > 0 else m.astype(np.float32)
+    return 1 - m if s.mask_invert else m
+
+
+def _background(img: np.ndarray, s: Settings, frame: int, shape) -> np.ndarray:
+    h, w = shape
+    kind = s.background.strip()
+    if kind in ("original", ""):
+        return prepare(img, s)
+    if kind in ("paper", "none"):
+        out = np.empty((h, w, 4 if kind == "none" else 3), np.float32)
+        if kind == "none":
+            out[...] = 0
+        else:
+            out[...] = parse_color(s.paper) or (1.0, 1.0, 1.0)
+        return out
+    from .presets import load_preset
+
+    other = Settings().update(load_preset(kind))
+    other = replace(other, width=s.width, height=s.height, scale=s.scale, mask="", clip_edge="none", jpeg=0)
+    return render(img, other, frame)
+
+
+def _as_rgba(a: np.ndarray) -> np.ndarray:
+    return a if a.shape[2] == 4 else np.concatenate([a, np.ones(a.shape[:2] + (1,), np.float32)], axis=-1)
+
+
 def render(img: np.ndarray, s: Settings, frame: int = 0) -> np.ndarray:
     """Full pipeline. Returns float32 RGB (or RGBA when paper is 'none')."""
     s.validate()
+    if s.mask:
+        # Render this look and the background, then blend them through the mask.
+        # Clipping and JPEG wear apply to the combined image.
+        inner = replace(s, mask="", clip_edge="none", jpeg=0)
+        fore = render(img, inner, frame)
+        h, w = fore.shape[:2]
+        m = make_mask(prepare(img, s), s)[..., None]
+        back = _background(img, s, frame, (h, w))
+        if fore.shape[2] == 4 or back.shape[2] == 4:
+            fore, back = _as_rgba(fore), _as_rgba(back)
+        out = fore * m + back * (1 - m)
+        if s.clip_edge != "none":
+            from .clipping import apply_clipping
+
+            out = apply_clipping(out, s)
+        return jpeg_roundtrip(out, s.jpeg) if s.jpeg > 0 else out
     src = prepare(img, s)
     src = adjust(src, s)
     h, w = src.shape[:2]
