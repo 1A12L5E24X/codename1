@@ -442,3 +442,17 @@ def test_temporal_anchoring_steadies_error_diffusion():
     assert steady < loose / 3
     # Same overall tone either way.
     assert abs(outs0[0].mean() - outs1[0].mean()) < 0.02
+
+
+@pytest.mark.parametrize("edge", ["cut", "torn", "wavy"])
+def test_clipping_edges(edge):
+    s = Settings().update({"cell": 6, "clip_edge": edge, "clip_margin": 0.1, "backdrop": "#ff0000",
+                           "clip_shadow": 1.0})
+    out = render(photo(), s)
+    assert out.shape == (300, 360, 3)
+    # Corners show the backdrop, the centre shows the print.
+    assert out[2, 2, 0] > 0.6 and out[2, 2, 1] < 0.3
+    assert abs(out[150, 180, 0] - out[150, 180, 1]) < 0.05
+    # Transparent backdrop gives an alpha channel with a soft shadow.
+    t = render(photo(), Settings().update({"cell": 6, "clip_edge": edge, "backdrop": "none"}))
+    assert t.shape[2] == 4 and t[0, 0, 3] < 0.2 and t[150, 180, 3] > 0.99

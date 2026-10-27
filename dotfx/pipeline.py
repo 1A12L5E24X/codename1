@@ -434,6 +434,10 @@ def render(img: np.ndarray, s: Settings, frame: int = 0) -> np.ndarray:
             b = gaussian_blur(layer.coverage, 0.8)
             layer.coverage = np.clip((b - 0.5 + 0.5 * rough) * 2 + 0.5, 0, 1).astype(np.float32)
     out = composite(layers, s, h, w, seed)
+    if s.clip_edge != "none":
+        from .clipping import apply_clipping
+
+        out = apply_clipping(out, s)
     if s.jpeg > 0:
         out = jpeg_roundtrip(out, s.jpeg)
     return out

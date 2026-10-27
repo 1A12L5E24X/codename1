@@ -147,8 +147,12 @@ def build(img: np.ndarray, s: Settings) -> VDoc:
     doc = VDoc(w, h, paper, [])
     texture = [n for n in ("roughness", "ink_noise", "bleed", "grain", "speckle", "vignette", "post_blur",
                            "glow", "jpeg") if getattr(s, n)]
-    if texture or s.ink_opacity < 1:
-        doc.notes.append("vector output leaves out raster texture: " + ", ".join(texture or ["ink_opacity"]))
+    if s.ink_opacity < 1:
+        texture.append("ink_opacity")
+    if s.clip_edge != "none":
+        texture.append("clip_edge")
+    if texture:
+        doc.notes.append("vector output leaves out raster texture: " + ", ".join(texture))
     if s.effect == "halftone":
         _halftone(doc, src, s)
     else:

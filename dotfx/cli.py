@@ -40,6 +40,7 @@ GROUP_TITLES = {
     "halftone": "halftone screen (--effect halftone)",
     "dither": "dither (--effect dither)",
     "texture": "print texture",
+    "clipping": "paper clipping",
 }
 
 

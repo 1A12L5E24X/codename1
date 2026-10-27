@@ -24,6 +24,16 @@ PRESETS: dict[str, tuple[str, dict]] = {
             post_blur=0.5, jpeg=75,
         ),
     ),
+    "newsprint-clipping": (
+        "Newsprint cut out like a clipping, with a soft shadow on white (as in the reference's top edge)",
+        dict(
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=80,
+            ink="#333333", paper="#f6f6f5", softness=1.1, dot_gain=1.5, min_dot=0.08,
+            roughness=0.22, rough_scale=0.9, ink_noise=0.25, grain=0.4, speckle=0.3,
+            post_blur=0.5, jpeg=75, clip_edge="cut", clip_margin=0.05, clip_rough=0.6,
+            clip_shadow=0.6, backdrop="#ffffff",
+        ),
+    ),
     "newsprint-fine": (
         "Newsprint with a finer screen (140 dots across) for more detail",
         dict(

@@ -136,6 +136,16 @@ class Settings:
         0, "Re-encode as a JPEG of this quality (1-100, 0 = off): blocky, color-bled web "
         "compression, like an image that's been saved and shared a few times.", "texture",
     )
+    # --- clipping -------------------------------------------------------------
+    clip_edge: str = opt(
+        "none", "Show the print as a paper clipping on a backdrop: cut (scissors), torn or wavy edge.",
+        "clipping", ("none", "cut", "torn", "wavy"),
+    )
+    clip_margin: float = opt(0.04, "Backdrop visible around the clipping (fraction of the short side).", "clipping")
+    clip_rough: float = opt(0.5, "How irregular the clipping's edge is (0..2).", "clipping")
+    clip_shadow: float = opt(0.5, "Drop shadow under the clipping (0..1).", "clipping")
+    backdrop: str = opt("#ffffff", "Backdrop color behind the clipping, or 'none'.", "clipping", metavar="COLOR")
+
     animate_grain: bool = opt(False, "Video: re-roll grain and roughness every frame.", "texture")
 
     # ------------------------------------------------------------------------
@@ -162,12 +172,12 @@ class Settings:
                 raise ValueError(f"{f.name} must be one of: {', '.join(choices)}")
         from .color import parse_color, parse_palette
 
-        for name in ("ink", "ink2", "paper", "tint"):
+        for name in ("ink", "ink2", "paper", "tint", "backdrop"):
             try:
                 value = parse_color(getattr(self, name))
             except ValueError as e:
                 raise ValueError(f"{name}: {e}") from None
-            if value is None and name not in ("paper", "tint"):
+            if value is None and name not in ("paper", "tint", "backdrop"):
                 raise ValueError(f"{name} can't be 'none' (only paper can be transparent)")
         for name in ("palette", "cmyk_inks"):
             try:
