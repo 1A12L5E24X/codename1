@@ -192,7 +192,8 @@ class Tuner:
         cols, rows = shutil.get_terminal_size((100, 32))
         panel = 40 if cols >= 90 else 32
         body = rows - 2
-        out = ["\x1b[H"]
+        # Synchronized output: terminals that support it swap in whole frames.
+        out = ["\x1b[?2026h\x1b[H"]
         flist = self.visible_fields()
         self.sel = max(0, min(self.sel, len(flist) - 1))
         lines: list[str] = []
@@ -205,32 +206,51 @@ class Tuner:
                 "c          show command line", "q / esc    quit", "?          close help",
             ]
         else:
-            top = max(0, min(self.sel - body // 2, len(flist) - body))
+            # Section headers between groups; the window follows the selection.
+            rows_: list[tuple[str, int]] = []
             group = None
-            for i, f in enumerate(flist[top:top + body], start=top):
+            sel_row = 0
+            for i, f in enumerate(flist):
+                if f.metadata["group"] != group:
+                    group = f.metadata["group"]
+                    rows_.append(("hdr", i))
+                if i == self.sel:
+                    sel_row = len(rows_)
+                rows_.append(("field", i))
+            top = max(0, min(sel_row - body // 2, len(rows_) - body))
+            for kind, i in rows_[top:top + body]:
+                f = flist[i]
+                if kind == "hdr":
+                    title = f" {f.metadata['group']} "
+                    lines.append(f"\x1b[2m──{title}{'─' * max(panel - len(title) - 4, 0)}\x1b[22m")
+                    continue
                 v = getattr(self.s, f.name)
                 if isinstance(v, float):
                     v = f"{v:g}"
                 name = f.name.replace("_", "-")
-                if f.metadata["group"] != group:
-                    group = f.metadata["group"]
+                text = f" {name:<15}{str(v)[:panel - 19]}"
                 mark = "\x1b[7m" if i == self.sel else ""
-                gtag = f"\x1b[2m{group[:4]}\x1b[22m" if (i == top or flist[i - 1].metadata["group"] != group) else "    "
-                text = f"{name:<14} {str(v)[:panel - 21]}"
-                lines.append(f"{gtag} {mark}{text:<{panel - 6}}\x1b[0m")
+                lines.append(f"{mark}{text:<{panel - 2}}\x1b[0m")
         lines = (lines + [""] * body)[:body]
-        vp = self.viewport(cols - panel - 1, body)
-        img_lines: list[str] = []
-        if vp is not None:
-            for y in range(0, vp.shape[0] - 1, 2):
-                t, b = vp[y], vp[y + 1]
-                img_lines.append("".join(
-                    f"\x1b[38;2;{a[0]};{a[1]};{a[2]}m\x1b[48;2;{c[0]};{c[1]};{c[2]}m▀" for a, c in zip(t, b)
-                ) + "\x1b[0m")
+        # The preview only changes with the render, zoom, pan or window size;
+        # cache its escape codes so moving the selection redraws instantly.
+        key = (id(self.out), self.zoom, tuple(self.pan), cols, body, panel)
+        if getattr(self, "_vp_key", None) != key:
+            vp = self.viewport(cols - panel - 1, body)
+            img_lines: list[str] = []
+            if vp is not None:
+                for y in range(0, vp.shape[0] - 1, 2):
+                    t, b = vp[y], vp[y + 1]
+                    img_lines.append("".join(
+                        f"\x1b[38;2;{a[0]};{a[1]};{a[2]}m\x1b[48;2;{c[0]};{c[1]};{c[2]}m▀" for a, c in zip(t, b)
+                    ) + "\x1b[0m")
+            self._vp_key, self._vp_lines = key, img_lines
+        img_lines = self._vp_lines
         for r in range(body):
             left = lines[r]
             right = img_lines[r] if r < len(img_lines) else ""
-            out.append(f"\x1b[K{left}\x1b[{panel + 1}G{right}\x1b[K\n")
+            # Overwrite in place (no clear-then-draw), so rows never flash blank.
+            out.append(f"\x1b[{panel}X{left}\x1b[{panel - 1}G\x1b[0m  {right}\x1b[K\n")
         desc = flist[self.sel].metadata["help"] if flist else ""
         zoom = ["fit", "¼", "½", "1:1", "2×"][self.zoom]
         info = f" {self.base or 'custom'} · zoom {zoom} · {self.render_ms:.0f} ms "
@@ -239,8 +259,10 @@ class Tuner:
         if len(text) > room:
             text = text[: max(room - 1, 0)] + "…"
         msg = f"\x1b[31m{text}\x1b[0m" if self.error else text
-        out.append(f"\x1b[2m{desc[:cols - 1]}\x1b[0m\x1b[K\n")
-        out.append(f"\x1b[7m{info}\x1b[0m {msg}\x1b[K")
+        if len(desc) > cols - 1:
+            desc = desc[: cols - 2] + "…"
+        out.append(f"\x1b[2m{desc}\x1b[0m\x1b[K\n")
+        out.append(f"\x1b[7m{info}\x1b[0m {msg}\x1b[K\x1b[?2026l")
         sys.stdout.write("".join(out))
         sys.stdout.flush()
 

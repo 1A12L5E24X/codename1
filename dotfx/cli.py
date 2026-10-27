@@ -268,6 +268,8 @@ def render_video(src: Path, dst: Path, s: Settings, args) -> None:
     jobs = opts.jobs or os.cpu_count() or 1
     results = ordered_map(_render_frame, limited(), jobs, _init_worker, (s, args.compare))
     prog = Progress(total, f"{src.name} → {dst.name}") if not (args.quiet or args.preview_only) else None
+    if prog:
+        prog.update(0)  # show the bar right away, before the workers finish their first frame
     first = next(results, None)
     if first is None:
         raise MediaError(f"could not decode any frames from {src}")
