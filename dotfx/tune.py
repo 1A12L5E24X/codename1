@@ -21,7 +21,7 @@ from .preview import fit_resize
 from .settings import Settings
 
 STEPS = {
-    "cell": 0.5, "angle": 5.0, "pixel": 0.25, "jpeg": 5, "cells": 10, "levels": 1, "colors": 1, "seed": 1,
+    "cell": 0.5, "angle": 5.0, "pixel": 0.25, "ink_limit": 0.05, "jpeg": 5, "cells": 10, "levels": 1, "colors": 1, "seed": 1,
     "width": 50, "height": 50, "scale": 0.05, "contrast": 0.05, "gamma": 0.05, "exposure": 0.1,
     "brightness": 0.02, "saturation": 0.05, "sharpen": 0.1, "sharpen_radius": 0.25, "blur": 0.25,
     "denoise": 0.25, "softness": 0.1, "dot_gain": 0.05, "min_dot": 0.01, "max_dot": 0.01,
@@ -125,7 +125,7 @@ class Tuner:
                 val = int(round(val))
             else:
                 val = round(val, 4)
-            minimum = {"cell": 1, "pixel": 0.25, "jpeg": 5, "levels": 2, "colors": 2}.get(f.name, None)
+            minimum = {"cell": 1, "pixel": 0.25, "ink_limit": 0.05, "jpeg": 5, "levels": 2, "colors": 2}.get(f.name, None)
             if minimum is None and f.name not in ("angle", "brightness", "exposure", "shadows", "highlights", "bias", "seed"):
                 minimum = 0
             if minimum is not None:

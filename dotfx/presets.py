@@ -97,6 +97,36 @@ PRESETS: dict[str, tuple[str, dict]] = {
             post_blur=0.6, jpeg=60,
         ),
     ),
+    # --- high-key black and white: paper dominates ----------------------------------
+    # ink_limit caps the darkest tone, so even black areas stay mostly white.
+    "bw-airy": (
+        "High-key black dots on white: small round dots, white dominates",
+        dict(
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=90, ink="#000000",
+            paper="#ffffff", ink_limit=0.35, gamma=1.15, contrast=1.15, min_dot=0.05, softness=1.0,
+        ),
+    ),
+    "bw-lines": (
+        "High-key thin black lines on white",
+        dict(
+            effect="halftone", mode="mono", spot="line", angle=45, cells=110, ink="#000000",
+            paper="#ffffff", ink_limit=0.35, gamma=1.15, contrast=1.15, min_dot=0.04,
+        ),
+    ),
+    "bw-stipple": (
+        "Sparse black stippling on white, scattered blue-noise dots",
+        dict(
+            effect="dither", mode="mono", algorithm="bluenoise", cells=180, cell_shape="circle",
+            dot_size=0.8, ink="#000000", paper="#ffffff", ink_limit=0.45, contrast=1.15,
+        ),
+    ),
+    "bw-grid": (
+        "The sky-dither dot grid in black, airy and mostly white",
+        dict(
+            effect="dither", mode="mono", algorithm="bayer4", cells=206, cell_shape="circle",
+            dot_size=0.85, ink="#000000", paper="#ffffff", ink_limit=0.45, contrast=1.15,
+        ),
+    ),
     "comic": (
         "Bold CMYK pop-art dots on warm paper",
         dict(

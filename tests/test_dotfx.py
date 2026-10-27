@@ -256,3 +256,11 @@ def test_jpeg_setting():
     assert out.shape == (64, 96, 4)
     with pytest.raises(ValueError):
         Settings().update({"jpeg": 101}).validate()
+
+
+def test_ink_limit_keeps_paper_dominant():
+    black = flat((0.0, 0.0, 0.0))
+    full = render(black, Settings().update({"cell": 6, "ink": "#000000"}))
+    capped = render(black, Settings().update({"cell": 6, "ink": "#000000", "ink_limit": 0.3}))
+    assert full[..., :3].mean() < 0.05
+    assert abs(float(capped[..., :3].mean()) - 0.7) < 0.05

@@ -66,6 +66,10 @@ class Settings:
     blur: float = opt(0.0, "Gaussian blur before the effect (pixels).", "tone")
     denoise: float = opt(0.0, "Light blur applied first, to calm sensor noise (pixels).", "tone")
     invert: bool = opt(False, "Invert the image before the effect.", "tone")
+    ink_limit: float = opt(
+        1.0, "Darkest tone allowed (1 = solid black possible; 0.35 = at most ~35% ink, "
+        "so paper dominates).", "tone",
+    )
 
     # --- colors -------------------------------------------------------------
     ink: str = opt("#111111", "Ink color (name, #hex or r,g,b).", "colors", metavar="COLOR")
@@ -170,6 +174,8 @@ class Settings:
             raise ValueError("tint_end must be greater than tint_start")
         if not 0 <= self.jpeg <= 100:
             raise ValueError("jpeg must be 0 (off) or a quality from 1 to 100")
+        if not 0 < self.ink_limit <= 1:
+            raise ValueError("ink_limit must be in (0, 1]")
         if self.cells < 0:
             raise ValueError("cells must be >= 0")
         if self.cell < 1:

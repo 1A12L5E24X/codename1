@@ -56,4 +56,8 @@ def adjust(img: np.ndarray, s) -> np.ndarray:
     if s.invert:
         out = 1 - out
 
+    if s.ink_limit < 1:
+        # Compress toward white: black becomes (1 - ink_limit) lightness.
+        out = 1 - (1 - out) * s.ink_limit
+
     return out

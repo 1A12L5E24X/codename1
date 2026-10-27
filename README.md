@@ -78,6 +78,19 @@ The sky presets place the tint by saturation, so on subjects other than sky
 any colorful area gets tinted. Add `--tint-by tone` to tint the dark areas
 instead.
 
+### High-key black and white
+
+Black ink on white where the paper dominates. They use `--ink-limit`, which
+caps the darkest tone, so even black areas print as open dots and lines
+(typically 75–95% white).
+
+| preset | look |
+|---|---|
+| `bw-airy` | small round 45° dots |
+| `bw-lines` | thin diagonal lines |
+| `bw-stipple` | sparse blue-noise stippling |
+| `bw-grid` | the sky-dither dot grid in black |
+
 ### Other presets
 
 | preset | engine | look |
@@ -172,7 +185,8 @@ sizes dots relative to the image instead, with N dots across the width, so a
 
 **Tone**: `--brightness --contrast --gamma --exposure --shadows --highlights
 --black --white --auto-levels --saturation --sharpen --sharpen-radius --blur
---denoise --invert`.
+--denoise --invert --ink-limit`. `--ink-limit 0.35` means nothing prints darker
+than about 35% ink, which keeps the result airy and paper-dominated.
 
 **Colors**: `--ink --ink2 --paper` take names (`sky`, `riso-pink`, `blueprint`,
 `phosphor`…), `#hex` or `r,g,b`. `--paper none` gives a transparent PNG.
