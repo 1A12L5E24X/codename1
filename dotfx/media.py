@@ -169,6 +169,15 @@ def read_frames(path: Path, info: VideoInfo, start: float = 0, duration: float =
             print(f"ffmpeg (decode): {err.strip()}", file=sys.stderr)
 
 
+def frame_at(path: Path, info: VideoInfo, t: float) -> np.ndarray | None:
+    """One RGB frame at time t (seconds)."""
+    frames = read_frames(path, info, start=max(t, 0.0), max_frames=1)
+    try:
+        return next(frames, None)
+    finally:
+        frames.close()
+
+
 @dataclass
 class VideoOptions:
     fps: float = 0

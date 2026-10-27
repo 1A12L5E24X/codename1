@@ -6,6 +6,7 @@ import argparse
 import glob
 import os
 import sys
+import time
 from dataclasses import fields
 from pathlib import Path
 
@@ -149,10 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
     t = sub.add_parser("tune", help="interactive tuner: adjust settings and watch the result live",
                        description="Adjust settings with the keyboard and watch the print update. "
                                    "On exit the equivalent command line is printed.")
-    t.add_argument("input", help="image (or video: first frame) to tune on")
+    t.add_argument("input", help="image or video to tune on (videos can be scrubbed with , . < >)")
     t.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml", help="starting preset")
     t.add_argument("-o", "--output", help="where 'o' writes the image [default: INPUT.tuned.png]")
     t.add_argument("--save", default="dotfx-tuned.toml", help="where 'S' saves the preset [default: dotfx-tuned.toml]")
+    t.add_argument("--preview-mode", default="auto", choices=("auto", "blocks", "kitty", "iterm"),
+                   help="sharp images in kitty/Ghostty/iTerm2/WezTerm, half-blocks elsewhere [default: auto]")
     add_setting_args(t)
     return parser
 
@@ -359,9 +362,11 @@ def cmd_render(args) -> int:
             if is_video(src):
                 render_video(src, dst, s, args)
             else:
+                t0 = time.monotonic()
                 render_image(src, dst, s, args)
                 if not args.preview_only:
-                    log(args, f"{src.name} → {dst}")
+                    ok = "\x1b[38;2;158;206;106m✓\x1b[0m" if sys.stderr.isatty() else "✓"
+                    log(args, f"{ok} {src.name} → {dst}  ({time.monotonic() - t0:.1f}s)")
         except (MediaError, OSError, ValueError) as e:
             failures += 1
             print(f"error: {src}: {e}", file=sys.stderr)
@@ -374,10 +379,28 @@ def cmd_presets(args) -> int:
         sys.stdout.write(f"# {PRESETS[args.name][0]}\n" if args.name in PRESETS else "")
         sys.stdout.write(to_toml(s).replace("# dotfx preset\n\n", ""))
         return 0
+    tty = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    accent, muted, bold, end = ("\x1b[38;2;122;162;247m", "\x1b[38;2;110;118;150m", "\x1b[1m", "\x1b[0m") \
+        if tty else ("", "", "", "")
+    groups = [
+        ("reference looks", lambda n: n.startswith(("newsprint", "sky-dither"))),
+        ("black & white, mostly white", lambda n: n.startswith("bw-")),
+        ("more looks", lambda n: True),
+    ]
     width = max(len(n) for n in PRESETS)
-    for name, (desc, d) in PRESETS.items():
-        print(f"  {name:<{width}}  {d.get('effect', 'halftone'):<8}  {desc}")
-    print("\nUse: dotfx render photo.jpg -p NAME   (show settings: dotfx presets NAME)")
+    shown: set[str] = set()
+    for title, member in groups:
+        names = [n for n in PRESETS if n not in shown and member(n)]
+        if not names:
+            continue
+        print(f"{accent}{bold}{title.upper()}{end}")
+        for name in names:
+            desc, d = PRESETS[name]
+            print(f"  {bold}{name:<{width}}{end}  {muted}{d.get('effect', 'halftone'):<8}{end}  {desc}")
+            shown.add(name)
+        print()
+    print(f"{muted}use:{end} dotfx photo.jpg -p NAME    {muted}settings:{end} dotfx presets NAME    "
+          f"{muted}try live:{end} dotfx tune photo.jpg")
     return 0
 
 
@@ -501,6 +524,7 @@ def cmd_tune(args) -> int:
     src = Path(args.input).expanduser()
     if not src.exists():
         raise FileNotFoundError(f"no such file: {src}")
+    video = probe(src) if is_video(src) else None
     img = first_frame_or_image(src)
     base = args.preset[-1] if args.preset else None
     note = ""
@@ -511,7 +535,7 @@ def cmd_tune(args) -> int:
         s.scale = round(1600 / longest, 3)
         note = f"large image: working at scale {s.scale:g} (set scale to 1 for full size)"
     out = Path(args.output) if args.output else src.with_name(f"{src.stem}.tuned.png")
-    return run_tuner(src, img, s, base, out, Path(args.save), note)
+    return run_tuner(src, img, s, base, out, Path(args.save), note, video=video, preview_mode=args.preview_mode)
 
 
 def main(argv: list[str] | None = None) -> int:

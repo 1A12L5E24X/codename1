@@ -322,3 +322,48 @@ def test_cli_match_writes_a_usable_preset(tmp_path):
     s = Settings().update(load_preset(str(out)))
     assert s.effect == "halftone" and s.cells == 40
     assert Image.open(check).size[0] > 2 * 360
+
+
+# --- terminal UI --------------------------------------------------------------------
+
+
+def test_fit_pads_and_cuts_styled_text():
+    from dotfx.term import fit, visible_len
+
+    assert visible_len(fit("\x1b[1mhi\x1b[0m", 5)) == 5
+    cut = fit("\x1b[1mhello world\x1b[0m", 6)
+    assert visible_len(cut) == 6 and cut.endswith("…\x1b[0m")
+
+
+def test_kitty_image_round_trips():
+    import base64
+    import io
+    import re
+
+    from dotfx.term import kitty_place
+
+    img = np.zeros((40, 60, 3), np.uint8)
+    img[:, 30:] = 255
+    codes = kitty_place(img, 10, 4)
+    parts = re.findall(r"\x1b_G([^;\x1b]*)(?:;([^\x1b]*))?\x1b\\", codes)
+    assert "a=d" in parts[0][0] and "a=T" in parts[1][0] and "c=10,r=4" in parts[1][0]
+    data = "".join(p[1] for p in parts[1:])
+    assert Image.open(io.BytesIO(base64.b64decode(data))).size == (60, 40)
+
+
+def test_tuner_draws_without_a_terminal(tmp_path, monkeypatch, capsys):
+    from dotfx.tune import Tuner
+
+    monkeypatch.setattr("dotfx.term.size", lambda: (120, 36))
+    t = Tuner(gradient(), Settings().update(load_preset("newsprint")), tmp_path / "x.png", "newsprint",
+              tmp_path / "o.png", tmp_path / "p.toml", preview_mode="blocks")
+    t.out = (render(gradient(), t.s) * 255).astype(np.uint8)
+    t.draw()
+    t.help = True
+    t.draw()
+    out = capsys.readouterr().out
+    assert "settings" in out and "preview" in out and "newsprint" in out and "keys" in out
+    t.sel = 0
+    t.adjust(1)  # effect: halftone -> dither
+    assert t.s.effect == "dither"
+    assert "-e dither" in t.command_line() or "--effect dither" in t.command_line()
