@@ -29,7 +29,7 @@ from .pipeline import render, to_uint8
 from .presets import PRESETS, load_preset, to_toml
 from .settings import Settings
 
-COMMANDS = ("render", "presets", "gallery", "options", "tune")
+COMMANDS = ("render", "presets", "gallery", "options", "tune", "match")
 
 GROUP_TITLES = {
     "effect": "effect",
@@ -132,6 +132,19 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--columns", type=int, default=4, help="tiles per row [default: 4]")
 
     sub.add_parser("options", help="list every effect option with its default")
+
+    m = sub.add_parser(
+        "match", help="measure a reference print and write a preset that recreates it",
+        description="Measure a halftone or dither reference (dot spacing and angle, inks, paper, tint, "
+                    "softness, grain, JPEG wear) and write a preset that recreates the look on any photo.",
+    )
+    m.add_argument("reference", help="an image of the look you want")
+    m.add_argument("-o", "--output", help="preset file to write [default: REFERENCE-NAME.toml]")
+    m.add_argument("--check", metavar="IMAGE.png",
+                   help="also render the reference (blurred back to a photo) with the preset, side by side")
+    m.add_argument("--print", dest="print_only", action="store_true", help="print the preset, don't write it")
+    m.add_argument("--no-calibrate", action="store_true",
+                   help="skip the tone calibration renders (faster, less accurate)")
 
     t = sub.add_parser("tune", help="interactive tuner: adjust settings and watch the result live",
                        description="Adjust settings with the keyboard and watch the print update. "
@@ -415,6 +428,60 @@ def cmd_gallery(args) -> int:
     return 0
 
 
+def _swatch(hex_color: str) -> str:
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+        return ""
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return f"\x1b[48;2;{r};{g};{b}m    \x1b[0m "
+
+
+def cmd_match(args) -> int:
+    from .match import descreen, match
+    from .ops import LUMA, gaussian_blur
+
+    src = Path(args.reference).expanduser()
+    if not src.exists():
+        raise FileNotFoundError(f"no such file: {src}")
+    img = first_frame_or_image(src)
+    rgb = (img[..., :3].astype(np.float32) / 255.0) if img.dtype == np.uint8 else img[..., :3]
+    result = match(rgb)
+    if not args.no_calibrate:
+        from .match import calibrate
+
+        err = calibrate(rgb, result)
+        result.notes.append(f"tone calibrated against the reference (remaining color error {err:.1%})")
+    s = Settings().update(result.settings)
+    s.validate()
+
+    bold, dim, end = ("\x1b[1m", "\x1b[2m", "\x1b[0m") if sys.stdout.isatty() else ("", "", "")
+    print(f"{bold}{src.name}{end}")
+    for note in result.notes:
+        print(f"  • {note}")
+    for key in ("ink", "tint", "paper"):
+        value = result.settings.get(key)
+        if value:
+            print(f"  {key:<6}{_swatch(value)}{value}")
+
+    toml = to_toml(s)
+    if args.print_only:
+        print()
+        sys.stdout.write(toml)
+    else:
+        out = Path(args.output) if args.output else Path(f"{src.stem}.toml")
+        out.write_text(f"# matched from {src.name}\n" + toml.replace("# dotfx preset\n", ""))
+        print(f"\n{dim}preset →{end} {out}\n{dim}use it:{end}   dotfx photo.jpg -p {out}")
+
+    if args.check:
+        flat = descreen(rgb, result)
+        out_img = render(flat, s)[..., :3]
+        sigma = rgb.shape[1] / max(s.cells or 100, 1)
+        err = np.abs(gaussian_blur(out_img @ LUMA, sigma) - gaussian_blur(rgb @ LUMA, sigma)).mean()
+        side = np.concatenate([rgb, np.ones((rgb.shape[0], 8, 3), np.float32), out_img], axis=1)
+        save_image(to_uint8(side), Path(args.check))
+        print(f"{dim}check →{end}  {args.check}  (reference | recreated, average tone difference {err:.1%})")
+    return 0
+
+
 def first_frame_or_image(src: Path) -> np.ndarray:
     if is_video(src):
         info = probe(src)
@@ -459,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         commands = {
             "render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery,
-            "options": cmd_options, "tune": cmd_tune,
+            "options": cmd_options, "tune": cmd_tune, "match": cmd_match,
         }
         return commands[args.command](args)
     except (KeyError, ValueError, FileNotFoundError, MediaError) as e:

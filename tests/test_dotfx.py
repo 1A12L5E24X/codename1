@@ -11,7 +11,7 @@ from dotfx import dither as dz
 from dotfx import halftone as ht
 from dotfx.cli import main
 from dotfx.color import parse_color, parse_palette
-from dotfx.pipeline import render
+from dotfx.pipeline import render, to_uint8
 from dotfx.presets import PRESETS, load_preset, to_toml
 from dotfx.settings import SPOTS, Settings
 
@@ -264,3 +264,61 @@ def test_ink_limit_keeps_paper_dominant():
     capped = render(black, Settings().update({"cell": 6, "ink": "#000000", "ink_limit": 0.3}))
     assert full[..., :3].mean() < 0.05
     assert abs(float(capped[..., :3].mean()) - 0.7) < 0.05
+
+
+# --- match ------------------------------------------------------------------------
+
+
+def photo(w=360, h=300):
+    """A smooth synthetic 'photo' with tones and colors across the frame."""
+    y, x = np.mgrid[0:h, 0:w] / np.array([h, w])[:, None, None]
+    r = 0.5 + 0.45 * np.sin(6 * x + 2 * y)
+    g = 0.5 + 0.45 * np.sin(4 * y - 3 * x + 1)
+    b = 0.5 + 0.45 * np.cos(5 * x * y + 2)
+    return (np.clip(np.stack([r, g, b], -1), 0, 1) * 255).astype(np.uint8)
+
+
+def test_match_recovers_a_halftone():
+    from dotfx.match import match
+
+    out = render(photo(), Settings().update({"cells": 40, "angle": 30, "spot": "dot", "ink": "#c02020"}))
+    m = match(out[..., :3]).settings
+    assert m["effect"] == "halftone" and m["mode"] == "mono"
+    assert abs(m["cells"] - 40) <= 1 and abs(m["angle"] - 30) < 2
+    assert parse_color(m["ink"])[0] > 0.6
+
+
+def test_match_recovers_a_bayer_dither_with_tint():
+    from dotfx.match import match
+
+    s = {"effect": "dither", "algorithm": "bayer4", "pixel": 4, "cell_shape": "circle",
+         "ink": "#203080", "tint": "#a0c0ff", "tint_start": 0.3, "tint_end": 0.5}
+    m = match(render(photo(), Settings().update(s))[..., :3]).settings
+    assert m["effect"] == "dither" and m["algorithm"] == "bayer4"
+    assert abs(m["cells"] - 90) <= 2
+    assert "tint" in m
+
+
+def test_match_detects_cmyk_and_jpeg():
+    from dotfx.match import match, measure_jpeg
+
+    out = render(photo(), Settings().update({"mode": "cmyk", "cells": 45}))
+    assert match(out[..., :3]).settings["mode"] == "cmyk"
+    # A soft, scanned-looking print (crisp black/white clips JPEG ringing, which
+    # hides the quantization; the matcher then reports "can't tell").
+    scan = {"cells": 40, "ink": "#333333", "paper": "#f6f6f5", "post_blur": 1.0}
+    q = measure_jpeg(render(photo(), Settings().update({**scan, "jpeg": 70}))[..., :3])
+    assert q is not None and 60 <= q <= 80
+    clean = Settings().update(scan)
+    assert measure_jpeg(render(photo(), clean)[..., :3]) == 0
+
+
+def test_cli_match_writes_a_usable_preset(tmp_path):
+    ref = tmp_path / "ref.png"
+    Image.fromarray(to_uint8(render(photo(), Settings().update({"cells": 40})))).save(ref)
+    out = tmp_path / "look.toml"
+    check = tmp_path / "check.png"
+    assert main(["match", str(ref), "-o", str(out), "--check", str(check)]) == 0
+    s = Settings().update(load_preset(str(out)))
+    assert s.effect == "halftone" and s.cells == 40
+    assert Image.open(check).size[0] > 2 * 360
