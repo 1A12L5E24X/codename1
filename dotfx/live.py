@@ -18,12 +18,11 @@ from .pipeline import render, to_uint8
 from .presets import PRESETS, load_preset
 from .preview import detect_protocol, fit_resize
 from .settings import Settings
+from . import ui
 from .term import BOLD, RESET, bg, fg, fit
 
-ACCENT = (122, 162, 247)
-MUTED = (110, 118, 150)
-GOOD = (158, 206, 106)
-REC = (247, 118, 142)
+GOOD = ui.GOOD
+REC = ui.BAD
 
 
 def camera_input(source: str) -> list[str]:
@@ -137,6 +136,261 @@ class Recorder:
         self.proc.wait()
 
 
+PRESET_GROUPS = [
+    ("reference", lambda n: n.startswith(("newsprint", "sky-dither"))),
+    ("black & white", lambda n: n.startswith("bw-")),
+    ("more", lambda n: True),
+]
+
+
+class LiveUI:
+    """The live screen: preset list | camera preview, header and key chips."""
+
+    def __init__(self, cap: "Capture", source: str, s: Settings, base: str | None, fps: float, out_dir: Path,
+                 graphics: str):
+        self.cap, self.fps, self.out_dir, self.graphics = cap, fps, out_dir, graphics
+        self.source_label = (f"camera {source or 0}" if is_camera(source) else Path(source).name)
+        self.s = replace(s, width=0, height=0, scale=1.0)
+        self.base = base
+        self.rows: list[tuple[str, str]] = []  # ("hdr", title) | ("preset", name)
+        seen: set[str] = set()
+        for title, member in PRESET_GROUPS:
+            names = [n for n in PRESETS if n not in seen and member(n)]
+            if names:
+                self.rows.append(("hdr", title))
+                self.rows += [("preset", n) for n in names]
+                seen.update(names)
+        self.names = [n for kind, n in self.rows if kind == "preset"]
+        self.paused = False
+        self.rec: Recorder | None = None
+        self.rec_start = 0.0
+        self.shots = 0
+        self.status, self.status_kind = "", "info"
+        self.flash_until = 0.0
+        self.out: np.ndarray | None = None
+        self.times: list[float] = []
+        self.seen, self.dirty = -1, False
+        self._img_key = None
+        self.enlarged = 1.0
+
+    # -- actions --------------------------------------------------------------
+    def set_preset(self, name: str) -> None:
+        self.base = name
+        self.s = replace(Settings().update(load_preset(name)), width=0, height=0, scale=1.0)
+        self.status, self.status_kind = PRESETS[name][0], "info"
+        self.dirty = True
+
+    def step_preset(self, d: int) -> None:
+        i = self.names.index(self.base) if self.base in self.names else -1
+        self.set_preset(self.names[(i + d) % len(self.names)])
+
+    def dot_size(self, d: int) -> None:
+        s = self.s
+        if s.cells:
+            self.s = replace(s, cells=max(10, s.cells - 10 * d))
+        elif s.effect == "halftone":
+            self.s = replace(s, cell=max(2.0, s.cell + d))
+        else:
+            self.s = replace(s, pixel=max(1.0, s.pixel + d))
+        self.dirty = True
+
+    def full_res(self) -> np.ndarray | None:
+        """The current frame rendered at full camera resolution (for files)."""
+        if self.graphics in ("kitty", "iterm") or self.cap.frame is None:
+            return self.out
+        return to_uint8(render(self.cap.frame, self.s)[..., :3])
+
+    def snapshot(self) -> None:
+        img = self.full_res()
+        if img is None:
+            return
+        self.shots += 1
+        path = self.out_dir / f"dotfx-snap-{time.strftime('%H%M%S')}-{self.shots}.png"
+        save_image(img, path)
+        self.status, self.status_kind = f"saved {path}", "ok"
+        self.flash_until = time.monotonic() + 0.35
+
+    def toggle_record(self) -> None:
+        if self.rec:
+            self.rec.close()
+            self.status = f"recorded {self.rec.path} ({self.rec.frames / self.fps:.1f}s)"
+            self.status_kind = "ok"
+            self.rec = None
+        elif self.cap.frame is not None:
+            h, w = self.cap.size[1], self.cap.size[0]
+            path = self.out_dir / f"dotfx-live-{time.strftime('%H%M%S')}.mp4"
+            self.rec = Recorder(path, w - w % 2, h - h % 2, self.fps)
+            self.rec_start = time.monotonic()
+            self.status, self.status_kind = f"recording to {path}", "info"
+
+    def update(self) -> None:
+        frame = self.cap.frame
+        if frame is None or self.paused or (self.cap.count == self.seen and not self.dirty):
+            return
+        self.seen, self.dirty = self.cap.count, False
+        t0 = time.monotonic()
+        if self.graphics in ("kitty", "iterm"):
+            self.out = to_uint8(render(frame, self.s)[..., :3])
+            if self.rec:
+                self.rec.write(self.out)
+        else:
+            # Half-blocks: render straight at the terminal's resolution so the dots
+            # are visible as blocks (presets size dots relative to the width, so
+            # the look keeps its proportions). Files still get full resolution.
+            from PIL import Image
+
+            iw, ih = self.preview_area()
+            h, w = frame.shape[:2]
+            scale = min(iw / w, ih * 2 / h)
+            tw, th = max(8, int(w * scale)), max(8, int(h * scale) // 2 * 2)
+            small = np.asarray(Image.fromarray(frame).resize((tw, th), Image.Resampling.BOX))
+            disp, self.enlarged = self.preview_settings(tw, scale)
+            self.out = to_uint8(render(small, disp)[..., :3])
+            if self.rec:
+                self.rec.write(to_uint8(render(frame, self.s)[..., :3]))
+        self.times = (self.times + [time.monotonic() - t0])[-12:]
+
+    # -- drawing --------------------------------------------------------------
+    def header(self, cols: int) -> str:
+        left = (f"{ui.logo('dotfx live')} {BOLD}{self.source_label}{RESET}  "
+                f"{fg(ui.MUTED)}preset{RESET} {fg(ui.ACCENT)}{self.base or 'custom'}{RESET}")
+        bits = []
+        if self.rec:
+            on = int(time.monotonic() * 2) % 2 == 0
+            dot = f"{fg(REC)}●{RESET}" if on else " "
+            el = time.monotonic() - self.rec_start
+            bits.append(f"{dot} {fg(REC)}{BOLD}REC{RESET} {fg(REC)}{int(el // 60):02d}:{el % 60:04.1f}{RESET}")
+        if self.paused:
+            bits.append(f"{fg(ui.CHANGED)}❚❚ paused{RESET}")
+        fps_now = len(self.times) / sum(self.times) if self.times else 0
+        w, h = self.cap.size
+        bits.append(f"{fg(ui.MUTED)}{w}×{h}{RESET}")
+        bits.append(f"{fg(GOOD)}{fps_now:4.1f}{RESET} {fg(ui.MUTED)}fps{RESET}")
+        return ui.spread(left, "   ".join(bits) + " ", cols)
+
+    def preset_panel(self, width: int, height: int) -> list[str]:
+        list_h = height - 3
+        sel = next((i for i, r in enumerate(self.rows) if r == ("preset", self.base)), 0)
+        top = max(0, min(sel - list_h // 2, len(self.rows) - list_h))
+        lines = []
+        for kind, name in self.rows[top:top + list_h]:
+            if kind == "hdr":
+                rule = "─" * max(width - len(name) - 3, 0)
+                lines.append(fit(f" {fg(ui.ACCENT)}{BOLD}{name.upper()}{RESET} {fg(ui.LINE)}{rule}{RESET}", width))
+            elif name == self.base:
+                lines.append(f"{fg(ui.ACCENT)}▌{RESET}{bg(ui.ACCENT_BG)}{fg((235, 238, 255))}{BOLD}"
+                             f"{fit(name, width - 1)}{RESET}")
+            else:
+                lines.append(fit(f"  {name}", width))
+        lines += [" " * width] * (list_h - len(lines))
+        s = self.s
+        if s.cells:
+            label, value, lo, hi = "dots across", s.cells, 20, 400
+        elif s.effect == "halftone":
+            label, value, lo, hi = "cell size", s.cell, 2, 40
+        else:
+            label, value, lo, hi = "pixel size", s.pixel, 1, 16
+        lines.append(f"{fg(ui.LINE)}{'─' * width}{RESET}")
+        lines.append(fit(f" {fg(ui.MUTED)}{label}{RESET} {value:g}", width))
+        lines.append(fit(f" {ui.slider(value, lo, hi, max(width - 2, 4))}", width))
+        return lines
+
+    def preview_settings(self, width: int, scale: float) -> tuple[Settings, float]:
+        """Settings for the terminal-sized preview, with dots kept big enough to
+        see as blocks (halftone >= 4, dither cells >= 2 terminal pixels)."""
+        s = self.s
+        minimum = 4.0 if s.effect == "halftone" else 2.0
+        if s.cells:
+            size = width / s.cells
+            if size >= minimum:
+                return s, 1.0
+            return replace(s, cells=max(1, int(width / minimum))), minimum / size
+        size = (s.cell if s.effect == "halftone" else s.pixel) * scale
+        if size >= minimum:
+            return replace(s, cell=s.cell * scale, pixel=max(1.0, s.pixel * scale)), 1.0
+        return replace(s, cell=max(s.cell * scale, minimum), pixel=max(s.pixel * scale, minimum)), minimum / size
+
+    def layout(self) -> tuple[int, int, int]:
+        cols, rows = term.size()
+        return cols, rows, (30 if cols >= 90 else 0)
+
+    def preview_area(self) -> tuple[int, int]:
+        cols, rows, panel = self.layout()
+        return cols - panel - 2, rows - 4
+
+    def draw(self) -> None:
+        cols, rows, panel = self.layout()
+        out = ["\x1b[?2026h\x1b[H", self.header(cols)]
+        body_y, body_h = 2, rows - 2
+        if panel:
+            out += ui.box(1, body_y, panel, body_h, "presets")
+            for i, line in enumerate(self.preset_panel(panel - 2, body_h - 2)):
+                out.append(f"\x1b[{body_y + 1 + i};2H{line}")
+        px, pw = panel + 1, cols - panel
+        iw, ih = pw - 2, body_h - 2
+        flash = time.monotonic() < self.flash_until
+        mode = "sharp" if self.graphics in ("kitty", "iterm") else "blocks"
+        label = mode if mode == "sharp" or self.enlarged <= 1.05 else f"blocks · dots ×{self.enlarged:.0f}"
+        out += ui.box(px, body_y, pw, body_h, self.source_label, label, color=GOOD if flash else ui.LINE)
+        img = self.out
+        if img is None:
+            msg = self.cap.error or "waiting for the camera…"
+            color = REC if self.cap.error else ui.MUTED
+            out.append(f"\x1b[{body_y + ih // 2};{px + max((iw - len(msg)) // 2, 1)}H{fg(color)}{msg}{RESET}")
+        elif mode == "sharp":
+            key = (id(img), iw, ih)
+            if key != self._img_key:
+                h, w = img.shape[:2]
+                c = min(iw, int(ih * 2 * w / h))
+                r = max(1, min(ih, int(round(c * h / w / 2))))
+                out.append(f"\x1b[{body_y + 1 + (ih - r) // 2};{px + 1 + (iw - c) // 2}H")
+                out.append(term.kitty_place(img, c, r) if self.graphics == "kitty" else term.iterm_place(img, c, r))
+                self._img_key = key
+        else:
+            h, w = img.shape[:2]
+            scale = min(iw / w, ih * 2 / h, 1.0)
+            vp = img if scale >= 1.0 else fit_resize(img, max(1, int(w * scale)), max(2, int(h * scale) // 2 * 2))
+            lines = ui.half_blocks(vp, iw, ih)
+            for i in range(ih):
+                line = lines[i] if i < len(lines) else ""
+                out.append(f"\x1b[{body_y + 1 + i};{px + 1}H{fit(line, iw)}")
+        keys = ui.chips([("↑↓", "preset"), ("[ ]", "dot size"), ("space", "pause"), ("s", "snapshot"),
+                         ("r", "record"), ("g", "preview"), ("q", "quit")])
+        color = GOOD if self.status_kind == "ok" else ui.MUTED
+        icon = "✓ " if self.status_kind == "ok" else ""
+        status = f"  {fg(color)}{icon}{self.status}{RESET}" if self.status else ""
+        out.append(f"\x1b[{rows};1H{fit(' ' + keys + status, cols)}\x1b[?2026l")
+        sys.stdout.write("".join(out))
+        sys.stdout.flush()
+
+    def handle(self, k: str) -> bool:
+        if k in ("q", "esc"):
+            return False
+        if k in ("up", "P"):
+            self.step_preset(-1)
+        elif k in ("down", "p"):
+            self.step_preset(1)
+        elif k in ("[", "]", "left", "right"):
+            self.dot_size(-1 if k in ("[", "left") else 1)
+        elif k == "space":
+            self.paused = not self.paused
+        elif k == "s":
+            self.snapshot()
+        elif k == "r":
+            self.toggle_record()
+        elif k == "g":
+            if self.graphics in ("kitty", "iterm"):
+                sys.stdout.write(term.kitty_clear())
+                self.graphics = "blocks"
+            else:
+                self.graphics = detect_protocol() if detect_protocol() != "blocks" else "kitty"
+            self._img_key = None
+        if k in ("up", "down", "p", "P", "g"):
+            sys.stdout.write("\x1b[2J")
+            self._img_key = None
+        return True
+
+
 def run_live(source: str, s: Settings, base: str | None, width: int, fps: float, out_dir: Path,
              preview_mode: str = "auto") -> int:
     reason = term.interactive_ok()
@@ -145,104 +399,26 @@ def run_live(source: str, s: Settings, base: str | None, width: int, fps: float,
         return 2
     cap = Capture(source, width, fps)
     graphics = detect_protocol() if preview_mode == "auto" else preview_mode
-    names = list(PRESETS)
-    paused, rec, shots = False, None, 0
-    status, last_out, times, seen, dirty = "", None, [], -1, False
-    s = replace(s, width=0, height=0, scale=1.0)
+    live = LiveUI(cap, source, s, base, fps, out_dir, graphics)
+    if base is None and s == Settings():
+        live.set_preset("newsprint")  # nothing chosen: start somewhere that looks like something
     sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J")
     try:
         with term.Keyboard() as kb:
             while True:
-                cols, rows = term.size()
-                frame = cap.frame
-                if frame is not None and not paused and (cap.count != seen or dirty):
-                    seen, dirty = cap.count, False
-                    t0 = time.monotonic()
-                    last_out = to_uint8(render(frame, s)[..., :3])
-                    times = (times + [time.monotonic() - t0])[-10:]
-                    if rec:
-                        rec.write(last_out)
-                fps_now = 1 / (sum(times) / len(times)) if times else 0
-                head = (f"{bg(ACCENT)}{fg((20, 22, 34))}{BOLD} ◉ dotfx live {RESET} "
-                        f"{fg(MUTED)}preset{RESET} {fg(ACCENT)}{base or 'custom'}{RESET}  "
-                        f"{fg(MUTED)}{cap.size[0]}×{cap.size[1]}  {fps_now:4.1f} fps{RESET}")
-                if rec:
-                    head += f"  {fg(REC)}● REC {rec.frames / fps:4.1f}s{RESET}"
-                if paused:
-                    head += f"  {fg(MUTED)}❚❚ paused{RESET}"
-                keys = "  ".join(f"{bg((52, 58, 86))} {k} {RESET}{fg(MUTED)} {t}{RESET}" for k, t in
-                                 (("p P", "preset"), ("[ ]", "dot size"), ("space", "pause"),
-                                  ("s", "snapshot"), ("r", "record"), ("q", "quit")))
-                out = ["\x1b[?2026h\x1b[H", fit(head, cols), "\n"]
-                ih = rows - 3
-                if last_out is not None:
-                    h, w = last_out.shape[:2]
-                    if graphics in ("kitty", "iterm"):
-                        c = min(cols, int(ih * 2 * w / h))
-                        r = max(1, int(round(c * h / w / 2)))
-                        out.append(f"\x1b[2;{(cols - c) // 2 + 1}H")
-                        out.append(term.kitty_place(last_out, c, r) if graphics == "kitty"
-                                   else term.iterm_place(last_out, c, r))
-                    else:
-                        scale = min(cols / w, ih * 2 / h)
-                        vp = fit_resize(last_out, max(1, int(w * scale)), max(2, int(h * scale) // 2 * 2))
-                        pad = (cols - vp.shape[1]) // 2
-                        for y in range(0, vp.shape[0] - 1, 2):
-                            a_, b_ = vp[y], vp[y + 1]
-                            line = "".join(f"\x1b[38;2;{a[0]};{a[1]};{a[2]}m\x1b[48;2;{c[0]};{c[1]};{c[2]}m▀"
-                                           for a, c in zip(a_, b_))
-                            out.append(f"\x1b[{2 + y // 2};1H\x1b[K\x1b[{pad + 1}G{line}{RESET}")
-                elif cap.error:
-                    out.append(f"\x1b[3;3H{fg(REC)}{cap.error}{RESET}")
-                else:
-                    out.append(f"\x1b[3;3H{fg(MUTED)}waiting for the camera…{RESET}")
-                msg = f"  {fg(GOOD)}{status}{RESET}" if status else ""
-                out.append(f"\x1b[{rows};1H{fit(' ' + keys + msg, cols)}\x1b[?2026l")
-                sys.stdout.write("".join(out))
-                sys.stdout.flush()
-
-                k = kb.read(0.01 if not paused else 0.3)
-                if k in ("q", "esc"):
+                live.update()
+                live.draw()
+                k = kb.read(0.01 if not live.paused else 0.25)
+                if k and not live.handle(k):
                     break
-                if k in ("p", "P"):
-                    i = names.index(base) if base in names else -1
-                    base = names[(i + (1 if k == "p" else -1)) % len(names)]
-                    s = replace(Settings().update(load_preset(base)), width=0, height=0, scale=1.0)
-                    status = f"{base}: {PRESETS[base][0]}"
-                    dirty = True
-                    sys.stdout.write("\x1b[2J")
-                elif k in ("[", "]"):
-                    d = -1 if k == "[" else 1
-                    if s.cells:
-                        s = replace(s, cells=max(10, s.cells - 10 * d))
-                    elif s.effect == "halftone":
-                        s = replace(s, cell=max(2.0, s.cell + d))
-                    else:
-                        s = replace(s, pixel=max(1.0, s.pixel + d))
-                    dirty = True
-                elif k == "space":
-                    paused = not paused
-                elif k == "s" and last_out is not None:
-                    shots += 1
-                    path = out_dir / f"dotfx-snap-{time.strftime('%H%M%S')}-{shots}.png"
-                    save_image(last_out, path)
-                    status = f"saved {path}"
-                elif k == "r" and last_out is not None:
-                    if rec:
-                        rec.close()
-                        status = f"recorded {rec.path} ({rec.frames} frames)"
-                        rec = None
-                    else:
-                        h, w = last_out.shape[:2]
-                        path = out_dir / f"dotfx-live-{time.strftime('%H%M%S')}.mp4"
-                        rec = Recorder(path, w - w % 2, h - h % 2, fps)
-                        status = f"recording to {path}"
     finally:
-        if rec:
-            rec.close()
+        if live.rec:
+            live.rec.close()
         cap.close()
-        if graphics == "kitty":
+        if live.graphics == "kitty":
             sys.stdout.write(term.kitty_clear())
         sys.stdout.write("\x1b[?25h\x1b[?1049l")
         sys.stdout.flush()
+    if live.shots or live.status.startswith("recorded"):
+        print(f"saved to {out_dir}")
     return 0

@@ -60,7 +60,8 @@ dotfx gallery photo.jpg                      # every preset on one sheet
 ```
 
 `render` is the default command, so `dotfx photo.jpg ...` is the same as
-`dotfx render photo.jpg ...`.
+`dotfx render photo.jpg ...`. Running `dotfx` on its own shows a short overview
+of the commands.
 
 ## Presets
 
@@ -342,8 +343,22 @@ dotfx live 1 -p comic            # another camera
 dotfx live clip.mp4 -p riso      # a file (looped) or a stream URL
 ```
 
-Keys: `p`/`P` preset, `[` `]` dot size, space pause, `s` snapshot (PNG), `r`
-record (MP4), `q` quit. Cameras are read through ffmpeg: v4l2 on Linux,
+The screen lists every preset on the left. Move through it with ↑ ↓ and the
+image restyles instantly. The other keys:
+
+| key | action |
+|---|---|
+| `[` `]` | dot size |
+| space | pause |
+| `s` | snapshot (PNG; the preview frame flashes) |
+| `r` | record (MP4; a blinking ● REC timer shows while recording) |
+| `g` | switch between sharp and half-block preview |
+| `q` | quit |
+
+Terminals without image support get a half-block preview, rendered straight at
+the terminal's resolution so the dots show as blocks. If they'd be too small to
+see, they're enlarged and the preview's title says so ("dots ×3"). Snapshots
+and recordings always use the full camera resolution and the real dot size. Cameras are read through ffmpeg: v4l2 on Linux,
 AVFoundation on macOS and DirectShow on Windows. `--capture-width` sets the
 processing size. At the default 480 px, rendering takes 13–90 ms a frame here
 (about 11–75 fps, from `bitmap` to `color-dots`), plus display time.

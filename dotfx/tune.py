@@ -58,15 +58,8 @@ EFFECT_GROUPS = {"halftone": "dither", "dither": "halftone"}  # group hidden for
 ZOOMS = [0, 4, 2, 1, 0.5]  # 0 = fit; otherwise image pixels per terminal pixel
 ZOOM_NAMES = ["fit", "¼", "½", "1:1", "2×"]
 
-# Palette (Tokyo Night-ish); accents only, body text stays the terminal default.
-ACCENT = (122, 162, 247)
-ACCENT_BG = (40, 52, 87)
-CHANGED = (224, 175, 104)
-GOOD = (158, 206, 106)
-BAD = (247, 118, 142)
-MUTED = (110, 118, 150)
-LINE = (65, 72, 104)
-SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+from .ui import ACCENT, ACCENT_BG, BAD, CHANGED, GOOD, LINE, MUTED, SPIN, chips, logo  # noqa: E402
+from . import ui  # noqa: E402
 
 KEYS_HELP = [
     ("↑ ↓", "select setting"), ("← →", "adjust"), ("[ ]  ⇧←→", "adjust ×10"), ("enter", "type a value"),
@@ -342,20 +335,11 @@ class Tuner:
                 lines.append(fit(f" {mark}{name:<{name_w}} {value}", width))
         return lines + [" " * width] * (height - len(lines))
 
-    def box(self, x: int, y: int, w: int, h: int, title: str = "", right: str = "") -> list[str]:
-        """Escape codes drawing a rounded frame (contents drawn separately)."""
-        c = fg(LINE)
-        t = f" {title} " if title else ""
-        r = f" {right} " if right else ""
-        fill = max(w - 2 - term.visible_len(t) - term.visible_len(r) - 1, 0)
-        out = [f"\x1b[{y};{x}H{c}╭─{RESET}{BOLD}{t}{RESET}{c}{'─' * fill}{RESET}{fg(MUTED)}{r}{c}╮{RESET}"]
-        for row in range(1, h - 1):
-            out.append(f"\x1b[{y + row};{x}H{c}│{RESET}\x1b[{y + row};{x + w - 1}H{c}│{RESET}")
-        out.append(f"\x1b[{y + h - 1};{x}H{c}╰{'─' * (w - 2)}╯{RESET}")
-        return out
+    def box(self, x: int, y: int, w: int, h: int, title: str = "", right: str = "", color=LINE) -> list[str]:
+        return ui.box(x, y, w, h, title, right, color)
 
     def header(self, cols: int) -> str:
-        logo = f"{bg(ACCENT)}{fg((20, 22, 34))}{BOLD} ◉ dotfx {RESET}"
+        logo_ = logo()
         name = f" {BOLD}{self.src.name}{RESET}"
         preset = f"  {fg(MUTED)}preset{RESET} {fg(ACCENT)}{self.base or 'custom'}{RESET}"
         with self._lock:
@@ -367,7 +351,7 @@ class Tuner:
             state = f"{fg(ACCENT)}{spin} rendering{RESET}"
         else:
             state = f"{fg(GOOD)}✓{RESET} {fg(MUTED)}{ms:.0f} ms{RESET}"
-        left = logo + name + preset + dims
+        left = logo_ + name + preset + dims
         space = cols - term.visible_len(left) - term.visible_len(state) - 1
         return left + " " * max(space, 1) + state + " "
 
@@ -385,10 +369,9 @@ class Tuner:
         flist = self.visible_fields()
         desc = flist[self.sel].metadata["help"] if flist else ""
         line1 = fit(f" {ITALIC}{fg(MUTED)}{desc}{RESET}", cols)
-        chips = [("↑↓", "select"), ("←→", "adjust"), ("enter", "edit"), ("p", "preset"), ("z", "zoom"),
+        chip_list = [("↑↓", "select"), ("←→", "adjust"), ("enter", "edit"), ("p", "preset"), ("z", "zoom"),
                  ("o", "export"), ("S", "save"), ("?", "help"), ("q", "quit")]
-        keys = " ".join(f"{bg((52, 58, 86))}{fg((220, 224, 240))} {k} {RESET}{fg(MUTED)} {t}{RESET}"
-                        for k, t in chips)
+        keys = chips(chip_list)
         with self._lock:
             err = self.error
         if err:

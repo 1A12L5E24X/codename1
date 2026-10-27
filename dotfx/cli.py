@@ -595,7 +595,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not args.command:
-        parser.print_help()
+        if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
+            from .home import show
+
+            show()
+        else:
+            parser.print_help()
         return 0
     try:
         commands = {

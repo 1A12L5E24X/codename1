@@ -531,3 +531,26 @@ def test_live_capture_reads_a_file(tmp_path):
         assert cap.frame is not None and cap.frame.shape == (60, 80, 3)
     finally:
         cap.close()
+
+
+def test_live_block_preview_keeps_dots_visible():
+    import types
+
+    from dotfx.live import LiveUI
+
+    cap = types.SimpleNamespace(frame=None, count=0, size=(640, 480), error="")
+    ui_ = LiveUI(cap, "", Settings().update(load_preset("newsprint")), "newsprint", 15, Path("."), "blocks")
+    s, enlarged = ui_.preview_settings(96, 0.15)  # 80 dots across a 96-pixel-wide preview
+    assert 96 / s.cells >= 4 and enlarged > 1
+    ui_.set_preset("bitmap")  # pixel-sized dither
+    s, enlarged = ui_.preview_settings(96, 0.15)
+    assert s.pixel >= 2
+
+
+def test_home_screen(monkeypatch, capsys):
+    from dotfx import home
+
+    monkeypatch.setattr(home, "size", lambda: (100, 40))
+    home.show()
+    out = capsys.readouterr().out
+    assert "COMMANDS" in out and "match" in out and ("▀" in out or "█" in out)
