@@ -212,3 +212,47 @@ def test_video_color_dither_uses_one_palette(tmp_path):
     for f in sorted((tmp_path / "frames").iterdir()):
         colors |= {tuple(c) for c in np.asarray(Image.open(f).convert("RGB")).reshape(-1, 3)}
     assert len(colors) <= 4
+
+
+def flat(rgb, h=48, w=64):
+    return np.full((h, w, 3), np.array(rgb) * 255, np.uint8)
+
+
+def test_fractional_dither_pixel():
+    s = Settings().update({"effect": "dither", "pixel": 3.5, "algorithm": "bayer4"})
+    out = render(gradient(), s)
+    assert out.shape[:2] == (64, 96)
+    # Tone survives the enlarge-render-shrink round trip.
+    lum = out[..., :3].mean(axis=(0, 2))
+    assert lum[:10].mean() < 0.35 and lum[-10:].mean() > 0.65
+
+
+def test_cells_allow_fractional_dither_pixels():
+    s = Settings().update({"effect": "dither", "cells": 27})
+    assert render(gradient(), s).shape[:2] == (64, 96)
+
+
+def test_tint_by_saturation_only_tints_colorful_areas():
+    base = {"effect": "dither", "pixel": 2, "ink": "#000000", "paper": "#ffffff", "tint": "#ff0000",
+            "tint_by": "saturation", "tint_start": 0.2, "tint_end": 0.4}
+    gray = render(flat((0.5, 0.5, 0.5)), Settings().update(base))
+    blue = render(flat((0.2, 0.4, 0.9)), Settings().update(base))
+    redness = lambda o: float((o[..., 0] - o[..., 1]).mean())  # noqa: E731
+    assert redness(gray) < 0.02
+    assert redness(blue) > 0.2
+
+
+def test_halftone_tint_by_tone():
+    s = Settings().update({"cell": 6, "tint": "#00ff00", "tint_start": 0.3, "tint_end": 0.6})
+    out = render(gradient(), s)
+    green = out[..., 1] - out[..., 0]
+    # Tint shows on the dark (left) side, not the light side.
+    assert green[:, :20].mean() > green[:, -20:].mean() + 0.05
+
+
+def test_jpeg_setting():
+    s = Settings().update({"jpeg": 40, "paper": "none", "cell": 6})
+    out = render(gradient(), s)
+    assert out.shape == (64, 96, 4)
+    with pytest.raises(ValueError):
+        Settings().update({"jpeg": 101}).validate()

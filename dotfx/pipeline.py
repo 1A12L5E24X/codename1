@@ -75,6 +75,18 @@ def lightness(img: np.ndarray, channel: str) -> np.ndarray:
     raise ValueError(f"unknown channel: {channel}")
 
 
+def saturation(img: np.ndarray) -> np.ndarray:
+    """HSV-style saturation: 0 for grays, 1 for pure colors."""
+    mx = img.max(axis=-1)
+    return (mx - img.min(axis=-1)) / np.maximum(mx, 1e-4)
+
+
+def tint_amount(img: np.ndarray, s: Settings) -> np.ndarray:
+    """0..1 tint coverage target for mono/gray modes."""
+    src = saturation(img) if s.tint_by == "saturation" else 1 - lightness(img, s.channel)
+    return smoothstep(s.tint_start, s.tint_end, src)
+
+
 # --- texture helpers ------------------------------------------------------------
 
 
@@ -140,6 +152,11 @@ def halftone_layers(img: np.ndarray, s: Settings, seed: int) -> list[Layer]:
 
     if s.mode in ("mono", "gray"):
         dark = 1 - lightness(img, s.channel)
+        tint = parse_color(s.tint)
+        if tint is not None:
+            # Same screen, so the tint dot sits concentrically under the ink dot.
+            tint_tone = tint_amount(img, s)
+            layers.append(Layer(plate(tint_tone, s.angle), np.array(tint, np.float32)))
         layers.append(Layer(plate(dark, s.angle), np.array(parse_color(s.ink), np.float32)))
     elif s.mode == "color":
         # Dot size = how far the color is from the paper, so saturated colors
@@ -225,6 +242,29 @@ def _cell_mask(shape: str, p: int, size: float) -> np.ndarray:
 
 
 def dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
+    """Dither layers; a fractional --pixel is rendered at a whole-pixel size on an
+    enlarged canvas and scaled back down, which also antialiases the cells."""
+    p = float(s.pixel)
+    if abs(p - round(p)) < 1e-6:
+        return _dither_layers(img, replace(s, pixel=int(round(p))), rng)
+    h, w = img.shape[:2]
+    big_p = int(np.ceil(p))
+    k = big_p / p
+    bw, bh = max(1, round(w * k)), max(1, round(h * k))
+    big = np.clip(resize(img, bw, bh, "lanczos"), 0, 1)
+    out = []
+    for layer in _dither_layers(big, replace(s, pixel=big_p), rng):
+        cov = np.clip(resize(layer.coverage, w, h, "box"), 0, 1)
+        color = layer.color
+        if color.ndim == 3:
+            # Resize premultiplied color so cell colors don't bleed into empty paper.
+            pm = resize(color * layer.coverage[..., None], w, h, "box")
+            color = np.clip(pm / np.maximum(cov[..., None], 1e-4), 0, 1)
+        out.append(Layer(cov.astype(np.float32), color.astype(np.float32), layer.blend))
+    return out
+
+
+def _dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
     h, w = img.shape[:2]
     p = int(s.pixel)
     sh, sw = -(-h // p), -(-w // p)
@@ -236,10 +276,21 @@ def dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
     algo = s.algorithm
 
     tone = None  # per small pixel darkness (0..1) for size_by_tone
+    tint_layer = None
     if s.mode in ("mono", "gray"):
         n = s.levels
         lv = np.linspace(0, 1, n, dtype=np.float32)
-        idx = dz.quantize(lightness(small, s.channel)[..., None], lv[:, None], algo, s, rng)
+        light = lightness(small, s.channel)
+        idx = dz.quantize(light[..., None], lv[:, None], algo, s, rng)
+        tint = parse_color(s.tint)
+        if tint is not None:
+            # Dithered with the same threshold map, so tint cells nest around the
+            # ink cells; drawn as whole cells to read as a flat second color.
+            tint_light = 1 - tint_amount(small, s)
+            two = np.array([[0.0], [1.0]], np.float32)
+            on = dz.quantize(tint_light[..., None], two, algo, s, rng) == 0
+            on_full = np.repeat(np.repeat(on, p, axis=0), p, axis=1)[:h, :w]
+            tint_layer = Layer(on_full.astype(np.float32), np.array(tint, np.float32))
         level = lv[idx]
         colors = ink_rgb + (paper_rgb - ink_rgb) * level[..., None]
         tone = 1 - level
@@ -280,15 +331,15 @@ def dither_layers(img: np.ndarray, s: Settings, rng) -> list[Layer]:
         yy, xx = np.mgrid[0:h, 0:w]
         cov = tiles[up(q), yy % p, xx % p]
         if s.mode in ("mono", "gray"):
-            color_full = np.broadcast_to(ink_rgb, color_full.shape)
-        return [Layer(cov.astype(np.float32), color_full)]
+            color_full = ink_rgb
+        return [tl for tl in (tint_layer,) if tl is not None] + [Layer(cov.astype(np.float32), color_full)]
     mask = _cell_mask(s.cell_shape, p, s.dot_size)
     cov = np.tile(mask, (sh, sw))[:h, :w]
     if s.mode in ("mono", "gray"):
         # Ink amount lives in coverage so bleed, roughness and transparency apply.
         cov = cov * up(tone.astype(np.float32))
-        color_full = np.broadcast_to(ink_rgb, color_full.shape)
-    return [Layer(cov.astype(np.float32), color_full)]
+        color_full = ink_rgb
+    return [tl for tl in (tint_layer,) if tl is not None] + [Layer(cov.astype(np.float32), color_full)]
 
 
 # --- compositing ----------------------------------------------------------------
@@ -351,7 +402,7 @@ def render(img: np.ndarray, s: Settings, frame: int = 0) -> np.ndarray:
     src = adjust(src, s)
     h, w = src.shape[:2]
     if s.cells > 0:
-        s = replace(s, cell=max(w / s.cells, 1.0), pixel=max(1, round(w / s.cells)))
+        s = replace(s, cell=max(w / s.cells, 1.0), pixel=max(w / s.cells, 1.0))
     seed = s.seed + (frame if s.animate_grain else 0)
     rng = np.random.default_rng(seed)
     if s.effect == "halftone":
@@ -369,7 +420,24 @@ def render(img: np.ndarray, s: Settings, frame: int = 0) -> np.ndarray:
         for layer in layers:
             b = gaussian_blur(layer.coverage, 0.8)
             layer.coverage = np.clip((b - 0.5 + 0.5 * rough) * 2 + 0.5, 0, 1).astype(np.float32)
-    return composite(layers, s, h, w, seed)
+    out = composite(layers, s, h, w, seed)
+    if s.jpeg > 0:
+        out = jpeg_roundtrip(out, s.jpeg)
+    return out
+
+
+def jpeg_roundtrip(img: np.ndarray, quality: int) -> np.ndarray:
+    """Pass the RGB channels through a 4:2:0 JPEG encode/decode (alpha untouched)."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.fromarray(to_uint8(img[..., :3])).save(buf, format="JPEG", quality=int(quality), subsampling=2)
+    rgb = np.asarray(Image.open(io.BytesIO(buf.getvalue())).convert("RGB"), np.float32) / 255.0
+    if img.shape[2] == 4:
+        return np.concatenate([rgb, img[..., 3:4]], axis=-1)
+    return rgb
 
 
 def to_uint8(img: np.ndarray) -> np.ndarray:

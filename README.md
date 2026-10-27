@@ -53,10 +53,35 @@ dotfx gallery photo.jpg                      # every preset on one sheet
 
 `dotfx presets` lists them, and `dotfx presets NAME` prints one as TOML.
 
+### Reference looks
+
+Two families are matched to specific reference prints. Each reference was
+measured for dot pitch, screen angle, ink and paper colors, and edge softness.
+It was then descreened (blurred back to a continuous image), re-rendered with
+the preset, and compared side by side. These presets size their dots with
+`cells` (dots across the width), so they keep the reference's proportions at
+any resolution.
+
+| preset | look |
+|---|---|
+| `newsprint` | **the gray newspaper reference**: 45° round dots, 80 across. Dot gain makes small highlight dots print bold and then drop out. Mottled neutral-gray ink, grainy paper, light JPEG wear. Rendered from the descreened reference, its average tone lands within 0.1% of the original. |
+| `newsprint-fine` | the same print with a finer screen (140 across) for more detail |
+| `newsprint-coarse` | blown up to 45 big dots across, poster-like |
+| `newsprint-clean` | the same screen without wear: crisp dots on white |
+| `newsprint-faded` | an old yellowed clipping: washed-out ink, warm paper, heavy grain |
+| `sky-dither` | **the blue sky reference**: 4×4 Bayer, 206 cells across. Dark blue round dots sit over a light-blue tint that fills only the blue sky; clouds get dots on white. The red channel drives tone, so the sky goes dark. Soft, JPEG-compressed finish (the compression also grays the small dots, as in the original). |
+| `sky-dither-clean` | the same without blur or compression |
+| `sky-dither-mono` | one blue ink, no tint |
+| `sky-dither-bold` | chunkier: 110 cells across |
+
+The sky presets place the tint by saturation, so on subjects other than sky
+any colorful area gets tinted. Add `--tint-by tone` to tint the dark areas
+instead.
+
+### Other presets
+
 | preset | engine | look |
 |---|---|---|
-| `newsprint` | halftone | gray 45° round dots on off-white stock, ragged edges, grain |
-| `sky-dither` | dither | blue 4×4 Bayer dither drawn as a grid of dots (red channel darkens skies) |
 | `comic` | halftone | bold CMYK pop-art dots on warm paper |
 | `cmyk-print` | halftone | fine process print with misregistration |
 | `riso` | halftone | single fluorescent-pink risograph, uneven ink |
@@ -140,7 +165,8 @@ shows the flags. Here they are by group.
 and gray. `red` behaves like a red lens filter and turns blue skies dark.
 
 **Size**: `--width`, `--height` and `--scale` resize before processing.
-`--cell` (halftone) and `--pixel` (dither) are in output pixels. `--cells N`
+`--cell` (halftone) and `--pixel` (dither) are in output pixels, and fractions
+such as `--pixel 3.5` work. `--cells N`
 sizes dots relative to the image instead, with N dots across the width, so a
 12-megapixel photo and a thumbnail get the same look.
 
@@ -152,6 +178,10 @@ sizes dots relative to the image instead, with N dots across the width, so a
 `phosphor`…), `#hex` or `r,g,b`. `--paper none` gives a transparent PNG.
 `--palette` takes `gameboy cga pico8 c64 sepia riso vaporwave phosphor amber…`
 or your own list. `--cmyk-inks` sets the four process inks.
+`--tint COLOR` (mono/gray, both engines) prints a flat second color under the
+ink, sharing its dot pattern. `--tint-by tone|saturation` with `--tint-start`
+and `--tint-end` decides where it appears: darker areas, or colorful areas
+like blue sky.
 
 **Halftone**:
 
@@ -175,7 +205,9 @@ or your own list. `--cmyk-inks` sets the four process inks.
 - `--serpentine`, `--spread`, `--bias`
 
 **Texture**: `--roughness --rough-scale --ink-noise --ink-opacity --bleed --grain
---grain-scale --speckle --vignette --post-blur`. For video, `--animate-grain`
+--grain-scale --speckle --glow --vignette --post-blur --jpeg`. `--jpeg Q`
+round-trips the print through a real JPEG encoder at quality Q, for the look of
+an image that has been saved and shared a few times. For video, `--animate-grain`
 re-rolls the texture every frame. Without it the paper stays still under the
 moving image.
 

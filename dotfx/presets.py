@@ -10,21 +10,91 @@ from pathlib import Path
 from .settings import Settings
 
 PRESETS: dict[str, tuple[str, dict]] = {
+    # --- reference 2: gray newspaper halftone -----------------------------------
+    # Measured from the reference: 45° round dots, ~80 cells across the width,
+    # neutral gray ink, dot gain in the highlights with an abrupt dropout,
+    # mottled ink, grainy paper, light JPEG wear. Sizes use `cells`, so the look
+    # is the same at any resolution.
     "newsprint": (
-        "Gray 45° round-dot screen on off-white stock, ragged edges and paper grain",
+        "Reference look: gray 45° newspaper dots, dot gain, mottled ink, grainy paper",
         dict(
-            effect="halftone", mode="mono", cell=9.5, angle=45, spot="dot",
-            ink="#3d3d3f", paper="#f5f5f2", softness=1.4, contrast=1.3, gamma=1.1,
-            min_dot=0.05, roughness=0.3, rough_scale=1.2, ink_noise=0.15, bleed=0.25,
-            grain=0.35, speckle=0.4, sharpen=0.4, post_blur=0.45,
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=80,
+            ink="#333333", paper="#f6f6f5", softness=1.1, dot_gain=1.5, min_dot=0.08,
+            roughness=0.22, rough_scale=0.9, ink_noise=0.25, grain=0.4, speckle=0.3,
+            post_blur=0.5, jpeg=75,
         ),
     ),
-    "sky-dither": (
-        "Blue 4x4 Bayer dither drawn as a grid of dots on white",
+    "newsprint-fine": (
+        "Newsprint with a finer screen (140 dots across) for more detail",
         dict(
-            effect="dither", mode="mono", algorithm="bayer4", pixel=4, channel="red",
-            cell_shape="circle", dot_size=1.18, ink="#5b84d8", paper="#ffffff",
-            contrast=1.35, gamma=0.9,
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=140,
+            ink="#333333", paper="#f6f6f5", softness=1.0, dot_gain=1.4, min_dot=0.07,
+            roughness=0.18, rough_scale=0.8, ink_noise=0.22, grain=0.35, speckle=0.25,
+            post_blur=0.4, jpeg=80,
+        ),
+    ),
+    "newsprint-coarse": (
+        "Newsprint blown up: 45 big dots across, poster-like",
+        dict(
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=45,
+            ink="#333333", paper="#f6f6f5", softness=1.2, dot_gain=1.5, min_dot=0.08,
+            roughness=0.3, rough_scale=1.2, ink_noise=0.3, grain=0.45, speckle=0.35,
+            post_blur=0.6, jpeg=75, contrast=1.05,
+        ),
+    ),
+    "newsprint-clean": (
+        "The newsprint screen without wear: crisp dots on white",
+        dict(
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=80,
+            ink="#333333", paper="#ffffff", softness=1.0, dot_gain=1.5, min_dot=0.08,
+        ),
+    ),
+    "newsprint-faded": (
+        "Old yellowed clipping: washed-out ink, warm paper, heavy grain",
+        dict(
+            effect="halftone", mode="mono", spot="dot", angle=45, cells=80,
+            ink="#55534f", paper="#eee8da", softness=1.2, dot_gain=1.4, min_dot=0.08,
+            contrast=0.9, roughness=0.3, rough_scale=1.0, ink_noise=0.45, ink_opacity=0.9,
+            grain=0.6, speckle=0.7, post_blur=0.6, vignette=0.25, jpeg=70,
+        ),
+    ),
+    # --- reference 1: blue sky dither -------------------------------------------
+    # Measured from the reference: a 4x4 Bayer dither ~206 cells across the width,
+    # dark blue round dots over a light blue tint that only fills the darker
+    # areas (sky), white elsewhere (clouds); red channel drives tone so blue sky
+    # goes dark; soft, JPEG-compressed finish.
+    "sky-dither": (
+        "Reference look: blue Bayer dots over a light-blue sky tint, soft JPEG finish",
+        dict(
+            effect="dither", mode="mono", algorithm="bayer4", channel="red", cells=206,
+            cell_shape="circle", dot_size=1.05, ink="#3a62a6", tint="#b0d6ff",
+            tint_by="saturation", tint_start=0.25, tint_end=0.4, paper="#ffffff", contrast=1.1, gamma=0.92,
+            post_blur=0.5, jpeg=55,
+        ),
+    ),
+    "sky-dither-clean": (
+        "The sky dither without blur or compression: crisp dots and tint",
+        dict(
+            effect="dither", mode="mono", algorithm="bayer4", channel="red", cells=206,
+            cell_shape="circle", dot_size=1.05, ink="#3a62a6", tint="#b0d6ff",
+            tint_by="saturation", tint_start=0.25, tint_end=0.4, paper="#ffffff", contrast=1.1, gamma=0.92,
+        ),
+    ),
+    "sky-dither-mono": (
+        "Single blue ink, no tint: dots on white everywhere",
+        dict(
+            effect="dither", mode="mono", algorithm="bayer4", channel="red", cells=206,
+            cell_shape="circle", dot_size=1.1, ink="#4a74c4", paper="#ffffff",
+            contrast=1.25, gamma=0.9, post_blur=0.4,
+        ),
+    ),
+    "sky-dither-bold": (
+        "Chunky sky dither: 110 cells across, same inks",
+        dict(
+            effect="dither", mode="mono", algorithm="bayer4", channel="red", cells=110,
+            cell_shape="circle", dot_size=1.0, ink="#3a62a6", tint="#b0d6ff",
+            tint_by="saturation", tint_start=0.25, tint_end=0.4, paper="#ffffff", contrast=1.1, gamma=0.92,
+            post_blur=0.6, jpeg=60,
         ),
     ),
     "comic": (

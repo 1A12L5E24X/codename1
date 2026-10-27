@@ -464,6 +464,10 @@ def main(argv: list[str] | None = None) -> int:
         msg = e.args[0] if isinstance(e, KeyError) and e.args else e
         print(f"error: {msg}", file=sys.stderr)
         return 2
+    except BrokenPipeError:
+        # Output piped into something like `head` that stopped reading.
+        sys.stderr.close()
+        return 0
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130

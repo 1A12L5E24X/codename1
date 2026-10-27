@@ -70,6 +70,16 @@ class Settings:
     # --- colors -------------------------------------------------------------
     ink: str = opt("#111111", "Ink color (name, #hex or r,g,b).", "colors", metavar="COLOR")
     ink2: str = opt("riso-pink", "Second ink for duotone (prints the midtones).", "colors", metavar="COLOR")
+    tint: str = opt(
+        "none", "Mono/gray: a flat second color printed under the ink in the darker areas, "
+        "sharing the dot pattern (e.g. a light blue under dark blue dots).", "colors", metavar="COLOR",
+    )
+    tint_by: str = opt(
+        "tone", "What places the tint: tone (darker areas) or saturation (colorful areas, "
+        "e.g. blue sky but not gray cloud shadows).", "colors", ("tone", "saturation"),
+    )
+    tint_start: float = opt(0.4, "Tone/saturation where the tint starts to appear (0..1).", "colors")
+    tint_end: float = opt(0.75, "Tone/saturation where the tint is solid (0..1).", "colors")
     paper: str = opt("#ffffff", "Paper color, or 'none' for a transparent background.", "colors", metavar="COLOR")
     palette: str = opt("bw", "Palette for --mode palette: a name or a list like '#000 #f80 #fff'.", "colors", metavar="PAL")
     colors: int = opt(8, "Number of colors picked from the image for dither --mode color.", "colors")
@@ -93,7 +103,7 @@ class Settings:
 
     # --- dither -------------------------------------------------------------
     algorithm: str = opt("bayer4", "Dither algorithm.", "dither", ALGORITHMS)
-    pixel: int = opt(2, "Dither pixel (cell) size in output pixels.", "dither")
+    pixel: float = opt(2.0, "Dither pixel (cell) size in output pixels; fractions are allowed.", "dither")
     cell_shape: str = opt("square", "How each dither pixel is drawn.", "dither", CELL_SHAPES)
     dot_size: float = opt(1.0, "Size of the drawn cell shape relative to the cell (<1 leaves gaps).", "dither")
     size_by_tone: bool = opt(False, "Scale each cell's dot by its tone instead of switching colors.", "dither")
@@ -114,6 +124,10 @@ class Settings:
     glow: float = opt(0.0, "Light bleeding from bright areas, for LED and screen looks (0..1).", "texture")
     vignette: float = opt(0.0, "Darken toward the edges (0..1).", "texture")
     post_blur: float = opt(0.0, "Soften the finished print, like a scan of paper (pixels).", "texture")
+    jpeg: int = opt(
+        0, "Re-encode as a JPEG of this quality (1-100, 0 = off): blocky, color-bled web "
+        "compression, like an image that's been saved and shared a few times.", "texture",
+    )
     animate_grain: bool = opt(False, "Video: re-roll grain and roughness every frame.", "texture")
 
     # ------------------------------------------------------------------------
@@ -140,18 +154,22 @@ class Settings:
                 raise ValueError(f"{f.name} must be one of: {', '.join(choices)}")
         from .color import parse_color, parse_palette
 
-        for name in ("ink", "ink2", "paper"):
+        for name in ("ink", "ink2", "paper", "tint"):
             try:
                 value = parse_color(getattr(self, name))
             except ValueError as e:
                 raise ValueError(f"{name}: {e}") from None
-            if value is None and name != "paper":
+            if value is None and name not in ("paper", "tint"):
                 raise ValueError(f"{name} can't be 'none' (only paper can be transparent)")
         for name in ("palette", "cmyk_inks"):
             try:
                 parse_palette(getattr(self, name))
             except ValueError as e:
                 raise ValueError(f"{name}: {e}") from None
+        if self.tint_end <= self.tint_start:
+            raise ValueError("tint_end must be greater than tint_start")
+        if not 0 <= self.jpeg <= 100:
+            raise ValueError("jpeg must be 0 (off) or a quality from 1 to 100")
         if self.cells < 0:
             raise ValueError("cells must be >= 0")
         if self.cell < 1:

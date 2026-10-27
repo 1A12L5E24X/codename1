@@ -21,20 +21,21 @@ from .preview import fit_resize
 from .settings import Settings
 
 STEPS = {
-    "cell": 0.5, "angle": 5.0, "pixel": 1, "cells": 10, "levels": 1, "colors": 1, "seed": 1,
+    "cell": 0.5, "angle": 5.0, "pixel": 0.25, "jpeg": 5, "cells": 10, "levels": 1, "colors": 1, "seed": 1,
     "width": 50, "height": 50, "scale": 0.05, "contrast": 0.05, "gamma": 0.05, "exposure": 0.1,
     "brightness": 0.02, "saturation": 0.05, "sharpen": 0.1, "sharpen_radius": 0.25, "blur": 0.25,
     "denoise": 0.25, "softness": 0.1, "dot_gain": 0.05, "min_dot": 0.01, "max_dot": 0.01,
     "gcr": 0.05, "misregister": 0.1, "dot_size": 0.05, "diffusion": 0.05, "spread": 0.02,
     "bias": 0.02, "roughness": 0.05, "rough_scale": 0.25, "ink_noise": 0.05, "ink_opacity": 0.05,
     "bleed": 0.05, "grain": 0.05, "grain_scale": 0.25, "speckle": 0.1, "vignette": 0.05,
-    "post_blur": 0.05, "glow": 0.05, "black": 0.01, "white": 0.01, "auto_levels": 0.5, "shadows": 0.05,
+    "post_blur": 0.05, "tint_start": 0.02, "tint_end": 0.02, "glow": 0.05, "black": 0.01, "white": 0.01, "auto_levels": 0.5, "shadows": 0.05,
     "highlights": 0.05,
 }
 # Values offered when cycling free-text settings with the arrow keys.
 SUGGEST = {
     "ink": ["#111111", "#3a3a3c", "sky", "riso-pink", "riso-blue", "riso-teal", "red", "navy",
             "phosphor", "amber", "#e8f0ff", "white"],
+    "tint": ["none", "#a9cdf8", "#cfe0ff", "#ffd6e8", "#d9d9d9", "riso-yellow"],
     "ink2": ["riso-pink", "riso-yellow", "riso-teal", "orange", "#ffb000", "cyan", "magenta"],
     "paper": ["#ffffff", "#f6f5f1", "cream", "newsprint", "#0b0b0c", "black", "blueprint", "none"],
     "palette": list(PALETTES),
@@ -124,7 +125,7 @@ class Tuner:
                 val = int(round(val))
             else:
                 val = round(val, 4)
-            minimum = {"cell": 1, "pixel": 1, "levels": 2, "colors": 2}.get(f.name, None)
+            minimum = {"cell": 1, "pixel": 0.25, "jpeg": 5, "levels": 2, "colors": 2}.get(f.name, None)
             if minimum is None and f.name not in ("angle", "brightness", "exposure", "shadows", "highlights", "bias", "seed"):
                 minimum = 0
             if minimum is not None:
