@@ -58,7 +58,8 @@ def add_setting_args(parser: argparse.ArgumentParser) -> None:
         if group not in groups:
             groups[group] = parser.add_argument_group(GROUP_TITLES.get(group, group))
         g = groups[group]
-        help_text = f.metadata["help"] + f" [default: {f.default}]"
+        # argparse treats % in help as a format code, so escape it.
+        help_text = (f.metadata["help"] + f" [default: {f.default}]").replace("%", "%%")
         flags = short.get(f.name, []) + [_flag(f.name)]
         if isinstance(f.default, bool):
             g.add_argument(*flags, dest=f.name, action=argparse.BooleanOptionalAction, default=None, help=help_text)

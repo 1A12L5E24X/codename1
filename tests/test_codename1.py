@@ -150,6 +150,14 @@ def test_cli_image(tmp_path, capsys):
     assert Image.open(out).size[0] > 96 * 2
 
 
+@pytest.mark.parametrize("command", ["render", "tune", "live", "match", "gallery", "app", "presets", "options"])
+def test_cli_help(command, capsys):
+    with pytest.raises(SystemExit) as exit_info:
+        main([command, "-h"])
+    assert exit_info.value.code == 0
+    assert "usage:" in capsys.readouterr().out
+
+
 def test_cli_batch_directory(tmp_path):
     d = tmp_path / "imgs"
     d.mkdir()
