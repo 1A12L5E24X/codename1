@@ -177,6 +177,12 @@ command line. It has:
 - **Match a reference:** drop in an image of the look you want and it's applied.
 - **Export:** PNG, JPEG, SVG and PDF at full resolution. Also *Save preset*
   (`.toml`) and *Copy command* (the equivalent command line).
+- **Command line:** the header shows the `dotfx` command for the current look as
+  you change it. Click it to copy.
+- **Shuffle (R):** a random look with random tweaks.
+- **Themes (T):** bright *paper* or dark *neon*. Your choice is remembered.
+
+Every button shows its keyboard key.
 
 Large images preview at a reduced size to stay quick. Exports always use the
 full size.
