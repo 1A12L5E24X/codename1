@@ -1,4 +1,4 @@
-"""dotfx app: the same engine behind a local browser interface.
+"""codename1 app: the same engine behind a local browser interface.
 
 A small standard-library HTTP server bound to 127.0.0.1. Every request needs a
 random token (handed to the browser in the URL it opens) and a local Host
@@ -171,7 +171,7 @@ def changed_settings(s: Settings) -> dict:
 def cli_command(name: str, s: Settings) -> str:
     import shlex
 
-    parts = ["dotfx", shlex.quote(name)]
+    parts = ["codename1", shlex.quote(name)]
     for f in fields(Settings):
         v = getattr(s, f.name)
         if v == f.default:
@@ -196,7 +196,7 @@ def export_video(state: AppState, job: Job, media: Media, s: Settings, fmt: str)
         if s.effect == "dither" and s.algorithm in KERNELS and s.temporal == 0:
             s = replace(s, temporal=1.0)
         info = media.info
-        out = state.workdir / f"{Path(media.name).stem}.dotfx.{fmt}"
+        out = state.workdir / f"{Path(media.name).stem}.codename1.{fmt}"
         job.path, job.mime = out, VIDEO_FORMATS[fmt]
         job.total = info.frames
         frames = read_frames(media.path, info)
@@ -226,7 +226,7 @@ def export_video(state: AppState, job: Job, media: Media, s: Settings, fmt: str)
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = f"dotfx/{__version__}"
+    server_version = f"codename1/{__version__}"
     state: AppState
 
     def log_message(self, *args) -> None:  # quiet
@@ -238,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
         if host not in ("127.0.0.1", "localhost"):
             return False
         q = parse_qs(urlparse(self.path).query)
-        token = self.headers.get("X-Dotfx-Token") or (q.get("t") or [""])[0]
+        token = self.headers.get("X-Codename1-Token") or (q.get("t") or [""])[0]
         return secrets.compare_digest(token, self.state.token)
 
     def _send(self, body: bytes, mime: str, status=HTTPStatus.OK, headers: dict | None = None) -> None:
@@ -278,7 +278,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in ("/", "/index.html"):
             if not self._allowed():
-                return self._send(b"dotfx: open the link printed in the terminal (it carries an access key).",
+                return self._send(b"codename1: open the link printed in the terminal (it carries an access key).",
                                   "text/plain; charset=utf-8", HTTPStatus.FORBIDDEN)
             return self._send((WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
         if not self._allowed():
@@ -399,7 +399,7 @@ class Handler(BaseHTTPRequestHandler):
                     out = to_uint8(render(frame, s))
                     data = _png(out, {"png": "PNG", "jpg": "JPEG", "webp": "WEBP"}[fmt], 95)
                 return self._send(data, IMAGE_FORMATS[fmt],
-                                  headers={"Content-Disposition": f'attachment; filename="{stem}.dotfx.{fmt}"'})
+                                  headers={"Content-Disposition": f'attachment; filename="{stem}.codename1.{fmt}"'})
             if url.path == "/api/match":
                 from .match import calibrate, match
 
@@ -416,7 +416,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/preset":
                 s = settings_from(self._json_body().get("settings"))
                 return self._send(to_toml(s).encode(), "application/toml",
-                                  headers={"Content-Disposition": 'attachment; filename="dotfx-look.toml"'})
+                                  headers={"Content-Disposition": 'attachment; filename="codename1-look.toml"'})
             if url.path == "/api/command":
                 body = self._json_body()
                 m = self.state.media.get(body.get("media") or "")
@@ -434,12 +434,12 @@ class Handler(BaseHTTPRequestHandler):
 
 class App:
     """A running server. Use start() from code (e.g. the tuner's browser button)
-    or serve_forever() from the `dotfx app` command."""
+    or serve_forever() from the `codename1 app` command."""
 
     def __init__(self, port: int = 0, workdir: Path | None = None):
         self._tmp = None
         if workdir is None:
-            self._tmp = tempfile.mkdtemp(prefix="dotfx-app-")
+            self._tmp = tempfile.mkdtemp(prefix="codename1-app-")
             workdir = Path(self._tmp)
         self.state = AppState(workdir)
         handler = type("BoundHandler", (Handler,), {"state": self.state})
@@ -521,7 +521,7 @@ def run_app(path: Path | None, settings: Settings, preset: str | None, port: int
     app = App(port=port)
     url = app.open_with(path, settings, preset, mode)
     link = hyperlink(url)
-    print(f"\n  {ui.logo('dotfx app')}  {BOLD}running in your browser{RESET}\n")
+    print(f"\n  {ui.logo('codename1 app')}  {BOLD}running in your browser{RESET}\n")
     print(f"  {fg(ui.MUTED)}open{RESET}  {link}")
     print(f"  {fg(ui.MUTED)}stop{RESET}  ctrl-c\n")
     if open_it and not open_browser(url):

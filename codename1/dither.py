@@ -51,7 +51,7 @@ def line_map(n: int = 6) -> np.ndarray:
 
 def _cache_dir() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
-    return Path(base) / "dotfx"
+    return Path(base) / "codename1"
 
 
 def _void_and_cluster(n: int, sigma: float = 1.5, seed: int = 1) -> np.ndarray:

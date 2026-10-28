@@ -20,7 +20,7 @@ INK_DARK = (20, 22, 34)
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-def logo(text: str = "dotfx") -> str:
+def logo(text: str = "codename1") -> str:
     return f"{bg(ACCENT)}{fg(INK_DARK)}{BOLD} ◉ {text} {RESET}"
 
 

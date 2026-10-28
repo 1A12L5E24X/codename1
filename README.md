@@ -1,10 +1,10 @@
-# dotfx
+# codename1
 
 Turn photos and video into halftone and dither prints from the terminal.
 
 ![every built-in preset](docs/gallery.jpg)
 
-dotfx has two engines:
+codename1 has two engines:
 
 - **halftone**: a rotated screen of dots whose size follows the image, as in offset
   printing. It has ten dot shapes, CMYK/RGB/duotone separations, and tone-accurate
@@ -21,11 +21,11 @@ rendered in parallel.
 
 Around those engines:
 
-- **`dotfx app`** is the same engine in a browser interface, running locally.
+- **`codename1 app`** is the same engine in a browser interface, running locally.
   Every terminal screen also has an **open in browser** button.
-- **`dotfx match`** measures a reference print and writes a preset that recreates it.
-- **`dotfx tune`** is a live terminal editor for every setting.
-- **`dotfx live`** runs a webcam or video stream through a preset in the terminal.
+- **`codename1 match`** measures a reference print and writes a preset that recreates it.
+- **`codename1 tune`** is a live terminal editor for every setting.
+- **`codename1 live`** runs a webcam or video stream through a preset in the terminal.
 - **SVG and PDF** output gives vector dots for print and plotters.
 - **Masks** give the subject and the background different looks.
 
@@ -42,33 +42,33 @@ pip install .            # numpy + Pillow
 pip install '.[fast]'    # + numba: error-diffusion dithers ~80x faster
 ```
 
-You can also run it without installing: `python -m dotfx ...`.
+You can also run it without installing: `python -m codename1 ...`.
 
 ## Quick start
 
 ```sh
-dotfx photo.jpg -p newsprint                 # → photo.newsprint.png
-dotfx photo.jpg -p sky-dither -o out.png
-dotfx clip.mp4 -p comic                      # → clip.comic.mp4 (audio kept)
-dotfx clip.mov -p bitmap --width 480 -o loop.gif
-dotfx shots/ -p riso -o printed/             # a whole folder
-dotfx photo.jpg -p newsprint --preview-only  # just look, in the terminal
-dotfx app photo.jpg                          # the browser interface
-dotfx tune photo.jpg -p newsprint            # adjust interactively in the terminal
-dotfx match reference.jpg                    # → reference.toml, a preset that recreates it
-dotfx photo.jpg -p reference.toml            # … then use it on anything
-dotfx photo.jpg -p newsprint -o poster.svg   # vector dots (also .pdf)
-dotfx live                                   # webcam through a preset, in the terminal
-dotfx gallery photo.jpg                      # every preset on one sheet
+codename1 photo.jpg -p newsprint                 # → photo.newsprint.png
+codename1 photo.jpg -p sky-dither -o out.png
+codename1 clip.mp4 -p comic                      # → clip.comic.mp4 (audio kept)
+codename1 clip.mov -p bitmap --width 480 -o loop.gif
+codename1 shots/ -p riso -o printed/             # a whole folder
+codename1 photo.jpg -p newsprint --preview-only  # just look, in the terminal
+codename1 app photo.jpg                          # the browser interface
+codename1 tune photo.jpg -p newsprint            # adjust interactively in the terminal
+codename1 match reference.jpg                    # → reference.toml, a preset that recreates it
+codename1 photo.jpg -p reference.toml            # … then use it on anything
+codename1 photo.jpg -p newsprint -o poster.svg   # vector dots (also .pdf)
+codename1 live                                   # webcam through a preset, in the terminal
+codename1 gallery photo.jpg                      # every preset on one sheet
 ```
 
-`render` is the default command, so `dotfx photo.jpg ...` is the same as
-`dotfx render photo.jpg ...`. Running `dotfx` on its own shows a short overview
+`render` is the default command, so `codename1 photo.jpg ...` is the same as
+`codename1 render photo.jpg ...`. Running `codename1` on its own shows a short overview
 of the commands.
 
 ## Presets
 
-`dotfx presets` lists them, and `dotfx presets NAME` prints one as TOML.
+`codename1 presets` lists them, and `codename1 presets NAME` prints one as TOML.
 
 ### Reference looks
 
@@ -137,8 +137,8 @@ Command-line options override a preset, and presets stack (`-p comic -p
 my-tweaks.toml`). To save your own:
 
 ```sh
-dotfx photo.jpg -p riso --ink riso-teal --cell 5 --save-preset teal.toml
-dotfx other.jpg -p teal.toml
+codename1 photo.jpg -p riso --ink riso-teal --cell 5 --save-preset teal.toml
+codename1 other.jpg -p teal.toml
 ```
 
 A preset file is flat TOML. `base` names a preset to start from:
@@ -152,12 +152,12 @@ roughness = 0.5
 
 ## Browser app
 
-![dotfx app](docs/app.png)
+![codename1 app](docs/app.png)
 
 ```sh
-dotfx app                    # opens your browser
-dotfx app photo.jpg -p riso  # start from a file and a preset
-dotfx app --webcam
+codename1 app                    # opens your browser
+codename1 app photo.jpg -p riso  # start from a file and a preset
+codename1 app --webcam
 ```
 
 The browser app runs on your own machine and uses the same engine as the
@@ -195,11 +195,11 @@ and `--no-open` just prints the link.
 and settings. After you quit the tuner, the browser app keeps running until
 Ctrl-C. `live` hands the camera over to the browser.
 
-## Recreate a reference: `dotfx match`
+## Recreate a reference: `codename1 match`
 
 ```sh
-dotfx match reference.jpg --check check.png
-dotfx photo.jpg -p reference.toml
+codename1 match reference.jpg --check check.png
+codename1 photo.jpg -p reference.toml
 ```
 
 `match` measures a halftone or dither image and writes a preset that
@@ -227,11 +227,11 @@ A two-ink duotone is read as CMYK.
 
 ## Interactive tuner
 
-![dotfx tune](docs/tune.png)
+![codename1 tune](docs/tune.png)
 
 ```sh
-dotfx tune photo.jpg -p newsprint
-dotfx tune clip.mp4 -p comic          # videos: scrub with , . < >
+codename1 tune photo.jpg -p newsprint
+codename1 tune clip.mp4 -p comic          # videos: scrub with , . < >
 ```
 
 The settings panel shows sliders, switches, choices and color swatches, and
@@ -267,7 +267,7 @@ responsive. The scale appears in the list like any other setting.
 
 ## Options
 
-`dotfx options` lists every setting with its default, and `dotfx render -h`
+`codename1 options` lists every setting with its default, and `codename1 render -h`
 shows the flags. Here they are by group.
 
 **Effect**: `-e/--effect halftone|dither` and `-m/--mode`:
@@ -338,9 +338,9 @@ like blue sky.
 - Fine-tune with `--mask-threshold`, `--mask-feather` and `--mask-invert`.
 
 ```sh
-dotfx photo.jpg -p comic --mask colorful --background newsprint-clean
-dotfx photo.jpg -p color-dots --mask center --background original
-dotfx photo.jpg -p riso --mask subject.png --background paper
+codename1 photo.jpg -p comic --mask colorful --background newsprint-clean
+codename1 photo.jpg -p color-dots --mask center --background original
+codename1 photo.jpg -p riso --mask subject.png --background paper
 ```
 
 **Clipping**: `--clip-edge cut|torn|wavy` shows the print as a paper clipping
@@ -357,18 +357,18 @@ moving image.
 ## Video
 
 ```sh
-dotfx in.mp4 -p newsprint                         # h264, CRF 16, audio copied as AAC
-dotfx in.mp4 -p comic --pix-fmt yuv444p           # no chroma subsampling: crisper colored dots
-dotfx in.mp4 -p bitmap --start 12 --duration 4 -o clip.gif
-dotfx in.mp4 -p riso -o out.webm                  # VP9 + Opus
-dotfx in.mp4 -p riso --codec prores_ks -o out.mov # for editing
-dotfx in.mp4 -p stipple -o frames/%05d.png        # image sequence
-dotfx in.mp4 -p comic --compare                   # original | effect side by side
+codename1 in.mp4 -p newsprint                         # h264, CRF 16, audio copied as AAC
+codename1 in.mp4 -p comic --pix-fmt yuv444p           # no chroma subsampling: crisper colored dots
+codename1 in.mp4 -p bitmap --start 12 --duration 4 -o clip.gif
+codename1 in.mp4 -p riso -o out.webm                  # VP9 + Opus
+codename1 in.mp4 -p riso --codec prores_ks -o out.mov # for editing
+codename1 in.mp4 -p stipple -o frames/%05d.png        # image sequence
+codename1 in.mp4 -p comic --compare                   # original | effect side by side
 ```
 
 Halftones and ordered dithers stay put from frame to frame. Error diffusion
 (Floyd–Steinberg, Atkinson…) is chaotic: a little sensor noise reroutes the error
-and the whole pattern shimmers. For video, dotfx turns on `--temporal 1`. It
+and the whole pattern shimmers. For video, codename1 turns on `--temporal 1`. It
 nudges each pixel's decision toward a fixed pattern, so static areas keep the
 same dots, and it never changes the tone. On a noisy static shot it reduces the
 cells that flip per frame like this:
@@ -388,9 +388,9 @@ takes about 0.5–1 s per frame per core.
 ## Live
 
 ```sh
-dotfx live                       # first camera
-dotfx live 1 -p comic            # another camera
-dotfx live clip.mp4 -p riso      # a file (looped) or a stream URL
+codename1 live                       # first camera
+codename1 live 1 -p comic            # another camera
+codename1 live clip.mp4 -p riso      # a file (looped) or a stream URL
 ```
 
 The screen lists every preset on the left. Move through it with ↑ ↓ and the
@@ -419,8 +419,8 @@ processing size. At the default 480 px, rendering takes 13–90 ms a frame here
 ## Vector output (SVG / PDF)
 
 ```sh
-dotfx photo.jpg -p newsprint -o poster.svg
-dotfx photo.jpg -p comic -o print.pdf --dpi 300
+codename1 photo.jpg -p newsprint -o poster.svg
+codename1 photo.jpg -p comic -o print.pdf --dpi 300
 ```
 
 Dots are written as real shapes. Each round dot is sized so that the inked area
@@ -454,7 +454,7 @@ including Windows Terminal and Windows 10+ consoles.
 - **Dither**: the image is reduced to one value per dither pixel, quantized
   with a threshold map or error diffusion, and each pixel is drawn with an
   antialiased shape tile. Blue noise is generated once with void-and-cluster
-  and cached in `~/.cache/dotfx`.
+  and cached in `~/.cache/codename1`.
 - **Match**: the reference's 2-D spectrum gives the dot lattice. In a halftone
   the screen's base frequency is the strongest peak. A Bayer dither instead
   puts its strongest energy in a 45° checkerboard, at frequency 1/(2 × cell),

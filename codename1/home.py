@@ -1,4 +1,4 @@
-"""The screen shown by `dotfx` with no arguments in a terminal."""
+"""The screen shown by `codename1` with no arguments in a terminal."""
 
 from __future__ import annotations
 
@@ -20,18 +20,19 @@ COMMANDS = [
     ("options", "", "every setting with its default"),
 ]
 EXAMPLES = [
-    ("dotfx photo.jpg -p sky-dither", "→ photo.sky-dither.png"),
-    ("dotfx clip.mp4 -p comic", "→ clip.comic.mp4, audio kept"),
-    ("dotfx photo.jpg -p newsprint -o poster.pdf", "vector dots for print"),
-    ("dotfx photo.jpg -p comic --mask colorful --background bw-airy", "two looks in one image"),
+    ("codename1 photo.jpg -p sky-dither", "→ photo.sky-dither.png"),
+    ("codename1 clip.mp4 -p comic", "→ clip.comic.mp4, audio kept"),
+    ("codename1 photo.jpg -p newsprint -o poster.pdf", "vector dots for print"),
+    ("codename1 photo.jpg -p comic --mask colorful --background bw-airy", "two looks in one image"),
 ]
 
 
 def banner(width: int) -> list[str]:
-    """'dotfx' set in type and printed through the halftone engine."""
+    """'codename1' set in type and printed through the halftone engine."""
     from PIL import Image, ImageDraw, ImageFont
 
-    w, h = max(min(width, 48), 24), 9  # cells; two pixel rows per cell
+    name = "codename1"
+    w, h = max(min(width, 9 * len(name)), 24), 9  # cells; two pixel rows per cell
     big = Image.new("L", (w * 8, h * 16), 0)
     draw = ImageDraw.Draw(big)
     def font_at(px: int):
@@ -44,17 +45,17 @@ def banner(width: int) -> list[str]:
     px = int(h * 15)
     while px > 10:
         font = font_at(px)
-        x0, y0, x1, y1 = draw.textbbox((0, 0), "dotfx", font=font)
+        x0, y0, x1, y1 = draw.textbbox((0, 0), name, font=font)
         if x1 - x0 <= w * 8 * 0.92 and y1 - y0 <= h * 16 * 0.9:
             break
         px -= 4
-    draw.text((w * 4, h * 8), "dotfx", fill=255, font=font, anchor="mm")
+    draw.text((w * 4, h * 8), name, fill=255, font=font, anchor="mm")
     mask = np.asarray(big.resize((w, h * 2), Image.Resampling.BOX), np.float32) / 255
     # Crisp letter shapes filled with a dot screen that fades from solid at the
     # top to small dots at the bottom.
     from .halftone import Screen
 
-    fade = np.repeat(np.linspace(1.0, 0.2, h * 2, dtype=np.float32)[:, None], w, axis=1)
+    fade = np.repeat(np.linspace(1.0, 0.55, h * 2, dtype=np.float32)[:, None], w, axis=1)
     scr = Screen(h * 2, w, 3.0, 45, spot="dot")
     cov = (mask * scr.coverage(scr.sample(fade, "center"), softness=0.7))[..., None]
     on = cov[..., 0] > 0.35
@@ -89,6 +90,6 @@ def show() -> None:
     for cmd, note in EXAMPLES:
         out.append(f"    {cmd}  {fg(ui.MUTED)}{note}{RESET}")
     out.append("")
-    out.append(f"  {fg(ui.MUTED)}dotfx COMMAND -h for details · dotfx render -h lists every effect option{RESET}")
+    out.append(f"  {fg(ui.MUTED)}codename1 COMMAND -h for details · codename1 render -h lists every effect option{RESET}")
     out.append("")
     sys.stdout.write("\n".join(out) + "\n")

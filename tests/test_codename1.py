@@ -7,13 +7,13 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from dotfx import dither as dz
-from dotfx import halftone as ht
-from dotfx.cli import main
-from dotfx.color import parse_color, parse_palette
-from dotfx.pipeline import render, to_uint8
-from dotfx.presets import PRESETS, load_preset, to_toml
-from dotfx.settings import SPOTS, Settings
+from codename1 import dither as dz
+from codename1 import halftone as ht
+from codename1.cli import main
+from codename1.color import parse_color, parse_palette
+from codename1.pipeline import render, to_uint8
+from codename1.presets import PRESETS, load_preset, to_toml
+from codename1.settings import SPOTS, Settings
 
 
 def gradient(h=64, w=96):
@@ -185,9 +185,9 @@ def test_cli_video(tmp_path):
 
 
 def test_module_entry_point():
-    r = subprocess.run([sys.executable, "-m", "dotfx", "--version"], capture_output=True, text=True,
+    r = subprocess.run([sys.executable, "-m", "codename1", "--version"], capture_output=True, text=True,
                        cwd=Path(__file__).resolve().parents[1])
-    assert r.returncode == 0 and "dotfx" in r.stdout
+    assert r.returncode == 0 and "codename1" in r.stdout
 
 
 def test_bad_colors_fail_validation():
@@ -280,7 +280,7 @@ def photo(w=360, h=300):
 
 
 def test_match_recovers_a_halftone():
-    from dotfx.match import match
+    from codename1.match import match
 
     out = render(photo(), Settings().update({"cells": 40, "angle": 30, "spot": "dot", "ink": "#c02020"}))
     m = match(out[..., :3]).settings
@@ -290,7 +290,7 @@ def test_match_recovers_a_halftone():
 
 
 def test_match_recovers_a_bayer_dither_with_tint():
-    from dotfx.match import match
+    from codename1.match import match
 
     s = {"effect": "dither", "algorithm": "bayer4", "pixel": 4, "cell_shape": "circle",
          "ink": "#203080", "tint": "#a0c0ff", "tint_start": 0.3, "tint_end": 0.5}
@@ -301,7 +301,7 @@ def test_match_recovers_a_bayer_dither_with_tint():
 
 
 def test_match_detects_cmyk_and_jpeg():
-    from dotfx.match import match, measure_jpeg
+    from codename1.match import match, measure_jpeg
 
     out = render(photo(), Settings().update({"mode": "cmyk", "cells": 45}))
     assert match(out[..., :3]).settings["mode"] == "cmyk"
@@ -329,7 +329,7 @@ def test_cli_match_writes_a_usable_preset(tmp_path):
 
 
 def test_fit_pads_and_cuts_styled_text():
-    from dotfx.term import fit, visible_len
+    from codename1.term import fit, visible_len
 
     assert visible_len(fit("\x1b[1mhi\x1b[0m", 5)) == 5
     cut = fit("\x1b[1mhello world\x1b[0m", 6)
@@ -341,7 +341,7 @@ def test_kitty_image_round_trips():
     import io
     import re
 
-    from dotfx.term import kitty_place
+    from codename1.term import kitty_place
 
     img = np.zeros((40, 60, 3), np.uint8)
     img[:, 30:] = 255
@@ -353,9 +353,9 @@ def test_kitty_image_round_trips():
 
 
 def test_tuner_draws_without_a_terminal(tmp_path, monkeypatch, capsys):
-    from dotfx.tune import Tuner
+    from codename1.tune import Tuner
 
-    monkeypatch.setattr("dotfx.term.size", lambda: (120, 36))
+    monkeypatch.setattr("codename1.term.size", lambda: (120, 36))
     t = Tuner(gradient(), Settings().update(load_preset("newsprint")), tmp_path / "x.png", "newsprint",
               tmp_path / "o.png", tmp_path / "p.toml", preview_mode="blocks")
     t.out = (render(gradient(), t.s) * 255).astype(np.uint8)
@@ -381,7 +381,7 @@ def test_palette_size_by_tone_uses_one_tone_per_cell():
 
 
 def test_vector_dot_area_is_tone_accurate():
-    from dotfx.vector import _clipped_circle_area, diamond_radius, dot_radius
+    from codename1.vector import _clipped_circle_area, diamond_radius, dot_radius
 
     for t in (0.05, 0.3, 0.5, 0.78, 0.9, 0.99):
         assert abs(float(_clipped_circle_area(np.array([dot_radius(np.array(t))]))[0]) - t) < 2e-3
@@ -487,7 +487,7 @@ def test_mask_file_and_preset_background(tmp_path):
 
 
 def test_camera_inputs(monkeypatch):
-    from dotfx import live
+    from codename1 import live
 
     monkeypatch.setattr(live.sys, "platform", "linux")
     assert live.camera_input("") == ["-f", "v4l2", "-i", "/dev/video0"]
@@ -502,7 +502,7 @@ def test_camera_inputs(monkeypatch):
 def test_windows_key_decoding(monkeypatch):
     import types
 
-    from dotfx import term
+    from codename1 import term
 
     queue = list("\xe0H" "\xe0M" "q" "\r")
     fake = types.SimpleNamespace(kbhit=lambda: bool(queue), getwch=lambda: queue.pop(0))
@@ -515,7 +515,7 @@ def test_windows_key_decoding(monkeypatch):
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 def test_live_capture_reads_a_file(tmp_path):
-    from dotfx.live import Capture
+    from codename1.live import Capture
 
     src = tmp_path / "clip.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=2",
@@ -536,7 +536,7 @@ def test_live_capture_reads_a_file(tmp_path):
 def test_live_block_preview_keeps_dots_visible():
     import types
 
-    from dotfx.live import LiveUI
+    from codename1.live import LiveUI
 
     cap = types.SimpleNamespace(frame=None, count=0, size=(640, 480), error="")
     ui_ = LiveUI(cap, "", Settings().update(load_preset("newsprint")), "newsprint", 15, Path("."), "blocks")
@@ -548,7 +548,7 @@ def test_live_block_preview_keeps_dots_visible():
 
 
 def test_home_screen(monkeypatch, capsys):
-    from dotfx import home
+    from codename1 import home
 
     monkeypatch.setattr(home, "size", lambda: (100, 40))
     home.show()
@@ -561,7 +561,7 @@ def test_home_screen(monkeypatch, capsys):
 
 @pytest.fixture
 def app_server(tmp_path):
-    from dotfx.app import App
+    from codename1.app import App
 
     app = App(workdir=tmp_path).start()
     base = f"http://127.0.0.1:{app.httpd.server_address[1]}"
@@ -574,7 +574,7 @@ def _call(base, token, path, body=None, raw=None, headers=None):
     import urllib.request
 
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-    req = urllib.request.Request(base + path, data=data, headers={"X-Dotfx-Token": token, **(headers or {})},
+    req = urllib.request.Request(base + path, data=data, headers={"X-Codename1-Token": token, **(headers or {})},
                                  method="POST" if data is not None else "GET")
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.read(), dict(r.headers)
@@ -588,7 +588,7 @@ def test_app_rejects_requests_without_the_token(app_server):
         _call(base, "nope", "/api/schema")
     assert e.value.code == 403
     page, _ = _call(base, app.state.token, f"/?t={app.state.token}")
-    assert b"<title>dotfx</title>" in page
+    assert b"<title>codename1</title>" in page
 
 
 def test_app_render_export_and_match(app_server, tmp_path):
@@ -634,7 +634,7 @@ def test_app_handoff_state(app_server, tmp_path):
 
 
 def test_mouse_reports_parse():
-    from dotfx.term import parse_mouse
+    from codename1.term import parse_mouse
 
     assert parse_mouse("\x1b[<0;12;40M\x1b[<0;12;40m") == "click:12:40"
     assert parse_mouse("\x1b[<64;5;6M") == "wheelup:5:6"

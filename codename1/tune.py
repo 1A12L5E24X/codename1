@@ -212,7 +212,7 @@ class Tuner:
 
     def command_line(self) -> str:
         base = self.base_settings()
-        parts = ["dotfx", shlex.quote(str(self.src))]
+        parts = ["codename1", shlex.quote(str(self.src))]
         if self.base:
             parts += ["-p", shlex.quote(self.base)]
         for f in fields(Settings):
@@ -521,7 +521,7 @@ class Tuner:
         app = shared_app()
         self.browser_url = app.open_with(self.src, s, self.base)
         if open_browser(self.browser_url):
-            self.set_status("opened in your browser (it stays available while dotfx runs)", "ok")
+            self.set_status("opened in your browser (it stays available while codename1 runs)", "ok")
         else:
             self.set_status(f"open {self.browser_url}", "info")
 
@@ -641,7 +641,7 @@ class Tuner:
         if getattr(self, "browser_url", None):
             from .app import hyperlink
 
-            print(f"\n  {logo('dotfx app')}  still running in your browser: {hyperlink(self.browser_url)}")
+            print(f"\n  {logo('codename1 app')}  still running in your browser: {hyperlink(self.browser_url)}")
             print(f"  {fg(MUTED)}ctrl-c to stop{RESET}")
             try:
                 while True:

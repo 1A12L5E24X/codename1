@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dotfx"
+name = "codename1"
 version = "0.1.0"
 description = "Turn photos and video into halftone and dither prints from the terminal"
 readme = "README.md"
@@ -16,10 +16,10 @@ fast = ["numba>=0.59"]
 test = ["pytest>=7"]
 
 [project.scripts]
-dotfx = "dotfx.cli:main"
+codename1 = "codename1.cli:main"
 
 [tool.setuptools]
-packages = ["dotfx"]
+packages = ["codename1"]
 
 [tool.setuptools.package-data]
-dotfx = ["web/*"]
+codename1 = ["web/*"]

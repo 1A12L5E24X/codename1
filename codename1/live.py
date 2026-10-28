@@ -206,7 +206,7 @@ class LiveUI:
         if img is None:
             return
         self.shots += 1
-        path = self.out_dir / f"dotfx-snap-{time.strftime('%H%M%S')}-{self.shots}.png"
+        path = self.out_dir / f"codename1-snap-{time.strftime('%H%M%S')}-{self.shots}.png"
         save_image(img, path)
         self.status, self.status_kind = f"saved {path}", "ok"
         self.flash_until = time.monotonic() + 0.35
@@ -219,7 +219,7 @@ class LiveUI:
             self.rec = None
         elif self.cap.frame is not None:
             h, w = self.cap.size[1], self.cap.size[0]
-            path = self.out_dir / f"dotfx-live-{time.strftime('%H%M%S')}.mp4"
+            path = self.out_dir / f"codename1-live-{time.strftime('%H%M%S')}.mp4"
             self.rec = Recorder(path, w - w % 2, h - h % 2, self.fps)
             self.rec_start = time.monotonic()
             self.status, self.status_kind = f"recording to {path}", "info"
@@ -253,7 +253,7 @@ class LiveUI:
 
     # -- drawing --------------------------------------------------------------
     def header(self, cols: int) -> str:
-        left = (f"{ui.logo('dotfx live')} {BOLD}{self.source_label}{RESET}  "
+        left = (f"{ui.logo('codename1 live')} {BOLD}{self.source_label}{RESET}  "
                 f"{fg(ui.MUTED)}preset{RESET} {fg(ui.ACCENT)}{self.base or 'custom'}{RESET}")
         bits = []
         if self.rec:

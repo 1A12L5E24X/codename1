@@ -83,11 +83,11 @@ def build_settings(args: argparse.Namespace) -> Settings:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="dotfx",
+        prog="codename1",
         description="Turn photos and video into halftone and dither prints.",
-        epilog="Run 'dotfx render -h' for every option, 'dotfx presets' for the built-in looks.",
+        epilog="Run 'codename1 render -h' for every option, 'codename1 presets' for the built-in looks.",
     )
-    parser.add_argument("--version", action="version", version=f"dotfx {__version__}")
+    parser.add_argument("--version", action="version", version=f"codename1 {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     r = sub.add_parser(
@@ -179,7 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("input", help="image or video to tune on (videos can be scrubbed with , . < >)")
     t.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml", help="starting preset")
     t.add_argument("-o", "--output", help="where 'o' writes the image [default: INPUT.tuned.png]")
-    t.add_argument("--save", default="dotfx-tuned.toml", help="where 'S' saves the preset [default: dotfx-tuned.toml]")
+    t.add_argument("--save", default="codename1-tuned.toml", help="where 'S' saves the preset [default: codename1-tuned.toml]")
     t.add_argument("--preview-mode", default="auto", choices=("auto", "blocks", "kitty", "iterm"),
                    help="sharp images in kitty/Ghostty/iTerm2/WezTerm, half-blocks elsewhere [default: auto]")
     add_setting_args(t)
@@ -427,7 +427,7 @@ def cmd_presets(args) -> int:
     if args.name:
         s = Settings().update(load_preset(args.name))
         sys.stdout.write(f"# {PRESETS[args.name][0]}\n" if args.name in PRESETS else "")
-        sys.stdout.write(to_toml(s).replace("# dotfx preset\n\n", ""))
+        sys.stdout.write(to_toml(s).replace("# codename1 preset\n\n", ""))
         return 0
     tty = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
     accent, muted, bold, end = ("\x1b[38;2;122;162;247m", "\x1b[38;2;110;118;150m", "\x1b[1m", "\x1b[0m") \
@@ -449,8 +449,8 @@ def cmd_presets(args) -> int:
             print(f"  {bold}{name:<{width}}{end}  {muted}{d.get('effect', 'halftone'):<8}{end}  {desc}")
             shown.add(name)
         print()
-    print(f"{muted}use:{end} dotfx photo.jpg -p NAME    {muted}settings:{end} dotfx presets NAME    "
-          f"{muted}try live:{end} dotfx tune photo.jpg")
+    print(f"{muted}use:{end} codename1 photo.jpg -p NAME    {muted}settings:{end} codename1 presets NAME    "
+          f"{muted}try live:{end} codename1 tune photo.jpg")
     return 0
 
 
@@ -541,8 +541,8 @@ def cmd_match(args) -> int:
         sys.stdout.write(toml)
     else:
         out = Path(args.output) if args.output else Path(f"{src.stem}.toml")
-        out.write_text(f"# matched from {src.name}\n" + toml.replace("# dotfx preset\n", ""))
-        print(f"\n{dim}preset →{end} {out}\n{dim}use it:{end}   dotfx photo.jpg -p {out}")
+        out.write_text(f"# matched from {src.name}\n" + toml.replace("# codename1 preset\n", ""))
+        print(f"\n{dim}preset →{end} {out}\n{dim}use it:{end}   codename1 photo.jpg -p {out}")
 
     if args.check:
         flat = descreen(rgb, result)

@@ -267,12 +267,12 @@ def load_preset(name_or_path: str) -> dict:
             data = base
         return data
     close = difflib.get_close_matches(name_or_path, list(PRESETS), n=3, cutoff=0.6)
-    hint = f" (did you mean {', '.join(close)}?)" if close else " (see: dotfx presets)"
+    hint = f" (did you mean {', '.join(close)}?)" if close else " (see: codename1 presets)"
     raise KeyError(f"unknown preset: {name_or_path}{hint}")
 
 
 def to_toml(settings: Settings, only_changed: bool = True) -> str:
-    lines = ["# dotfx preset", ""]
+    lines = ["# codename1 preset", ""]
     values = settings.to_dict(only_changed=only_changed)
     # Always name the engine and mode, even at their defaults, for readability.
     head = {k: getattr(settings, k) for k in ("effect", "mode")}
