@@ -180,7 +180,8 @@ command line. It has:
 
 The image takes up most of the window. The look and the most-used settings sit
 in one bar underneath it; every look and every setting is in the **Settings**
-panel (S). It follows your system's light or dark mode.
+panel (S). It looks like a terminal app: dark, monospace, with the keys listed
+along the bottom.
 
 Large images preview at a reduced size to stay quick. Exports always use the
 full size.
