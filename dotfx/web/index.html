@@ -5,51 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>dotfx</title>
 <style>
-/* Quiet neutrals, one accent. The image is the interface. */
 :root {
   color-scheme: light dark;
-  --bg: #f3f2ef; --stage: #e9e8e4; --panel: #fbfbf9; --ink: #161616; --muted: #8b8a85; --faint: #c9c7c1; --line: #dddbd5;
-  --accent: #ff4f00; --on-accent: #fff; --bad: #d92d20;
-  --mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --bg: #ffffff; --stage: #f4f4f5; --panel: #ffffff; --ink: #18181b; --muted: #71717a; --faint: #d4d4d8; --line: #e4e4e7; --hover: #f4f4f5;
+  --accent: #2563eb; --accent-ink: #ffffff; --accent-soft: #dbeafe; --bad: #dc2626;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #121212; --stage: #0b0b0b; --panel: #181818; --ink: #ececea; --muted: #7d7c78; --faint: #3c3b39; --line: #262625;
-    --accent: #ff6a26; }
+  :root { --bg: #18181b; --stage: #0f0f11; --panel: #18181b; --ink: #f4f4f5; --muted: #a1a1aa; --faint: #52525b; --line: #2e2e33; --hover: #27272a;
+    --accent: #3b82f6; --accent-soft: #1e3a8a; }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 12px/1.5 var(--mono); }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; background: none; border: 0; padding: 0; }
-::selection { background: var(--accent); color: var(--on-accent); }
+.num, .status, .timeline span { font-variant-numeric: tabular-nums; }
 
-.app { display: grid; grid-template-rows: 44px 1fr auto; height: 100vh; }
+.app { display: grid; grid-template-rows: 52px 1fr auto; height: 100vh; }
 
-/* ── top line ───────────────────────────────────────────────────────── */
-header { display: flex; align-items: center; gap: 22px; padding: 0 20px; }
-.brand { font-weight: 700; letter-spacing: .5px; }
-.brand::after { content: "."; color: var(--accent); }
+/* ── buttons ────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--panel); cursor: pointer; white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--hover); }
+.btn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.ghost:hover { background: var(--hover); }
+.btn.small { height: 26px; padding: 0 9px; font-size: 12px; }
+.divider { width: 1px; height: 20px; background: var(--line); }
+
+/* ── header ─────────────────────────────────────────────────────────── */
+header { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 650; font-size: 14px; margin-right: 10px; }
 .file { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .spacer { flex: 1; }
-nav { display: flex; align-items: center; gap: 18px; white-space: nowrap; }
-.link { color: var(--muted); }
-.link:hover, .link.on { color: var(--ink); }
-.link.on { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 4px; text-decoration-thickness: 2px; }
-.link.accent { color: var(--accent); font-weight: 700; }
-.link.accent:hover { color: var(--ink); }
 .menu { position: relative; }
-.menu-list { position: absolute; right: 0; top: 28px; min-width: 210px; z-index: 30; padding: 6px 0; display: none;
-  background: var(--panel); border: 1px solid var(--line); }
+.menu-list { position: absolute; right: 0; top: 36px; min-width: 220px; z-index: 30; padding: 4px; display: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
 .menu.open .menu-list { display: block; }
-.menu-list button { display: flex; width: 100%; gap: 12px; padding: 5px 14px; text-align: left; }
-.menu-list button:hover { color: var(--accent); }
+.menu-list button { display: flex; width: 100%; gap: 12px; padding: 7px 10px; border: 0; border-radius: 5px; background: none; text-align: left; cursor: pointer; }
+.menu-list button:hover { background: var(--hover); }
 .menu-list small { color: var(--muted); margin-left: auto; }
-.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 
 /* ── stage ──────────────────────────────────────────────────────────── */
 .stage { position: relative; overflow: hidden; background: var(--stage); }
 .viewport { position: absolute; inset: 0; cursor: grab; }
 .viewport.drag { cursor: grabbing; }
-.canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 6px 20px rgba(0,0,0,.06); }
 .canvas img { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .canvas.pixel img { image-rendering: pixelated; }
 .canvas .checker { position: absolute; inset: 0; background: repeating-conic-gradient(#d6d6d6 0 25%, #f2f2f2 0 50%) 0 0 / 16px 16px; }
@@ -57,105 +62,116 @@ nav { display: flex; align-items: center; gap: 18px; white-space: nowrap; }
 .compare #before { display: block; }
 .split { position: absolute; top: 0; bottom: 0; width: 0; display: none; z-index: 5; }
 .compare .split { display: block; }
-.split::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: var(--accent); }
-.split i { position: absolute; top: 50%; left: -14px; width: 28px; height: 28px; margin-top: -14px; border-radius: 50%; background: var(--accent);
-  color: var(--on-accent); display: grid; place-items: center; font-style: normal; cursor: ew-resize; }
-.tag { position: absolute; top: 14px; color: var(--muted); z-index: 6; display: none; }
+.split::before { content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+.split i { position: absolute; top: 50%; left: -6px; width: 12px; height: 36px; margin-top: -18px; border-radius: 6px; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: ew-resize; }
+.tag { position: absolute; top: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; z-index: 6; display: none; }
 .compare .tag { display: block; }
-.tools { position: absolute; right: 18px; top: 12px; display: flex; gap: 14px; z-index: 10; opacity: 0; transition: opacity .2s; }
-.stage:hover .tools, .tools:focus-within { opacity: 1; }
-.busy { position: absolute; left: 20px; top: 12px; z-index: 10; color: var(--muted); display: none; }
+.tools { position: absolute; right: 12px; top: 12px; display: flex; gap: 4px; z-index: 10; padding: 3px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); }
+.tools .btn { border: 0; }
+.busy { position: absolute; left: 12px; top: 12px; z-index: 10; padding: 3px 10px; border-radius: 6px; background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line); font-size: 12px; display: none; }
 .busy.on { display: block; }
-.timeline { display: none; align-items: center; gap: 14px; color: var(--muted); }
-.timeline input { flex: 1; }
-.timeline.on { display: flex; }
 .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 4; }
-.empty h1 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.empty h1 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
 .empty p { margin: 0 0 18px; color: var(--muted); }
-.empty .row { display: flex; gap: 22px; justify-content: center; }
-.dropping .stage::after { content: "drop to open"; position: absolute; inset: 0; display: grid; place-items: center; z-index: 40;
-  background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--accent); font-weight: 700; outline: 2px solid var(--accent); outline-offset: -12px; }
-.webcam-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10; display: none; gap: 20px; align-items: center;
-  padding: 6px 16px; background: var(--panel); white-space: nowrap; }
+.empty .row { display: flex; gap: 8px; justify-content: center; }
+.dropping .stage::after { content: "Drop to open"; position: absolute; inset: 12px; display: grid; place-items: center; z-index: 40; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--stage)); color: var(--accent); font-weight: 600; border: 2px dashed var(--accent); }
+.webcam-bar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10; display: none; gap: 8px; align-items: center;
+  padding: 5px 6px 5px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
 .webcam .webcam-bar { display: flex; }
-.rec { display: none; color: var(--bad); font-weight: 700; }
-.recording .rec { display: inline; animation: blink 1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
+.webcam-bar .fps { color: var(--muted); min-width: 56px; font-variant-numeric: tabular-nums; }
+.rec { display: none; color: var(--bad); font-weight: 600; }
+.recording .rec { display: inline; }
 
-/* ── bottom: looks + a few settings ─────────────────────────────────── */
-footer { padding: 10px 20px 12px; display: grid; gap: 8px; min-width: 0; }
-.looks { display: flex; gap: 16px; overflow-x: auto; white-space: nowrap; padding-bottom: 2px; scrollbar-width: none; }
-.looks::-webkit-scrollbar { display: none; }
-.looks { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 60px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 60px), transparent); padding-right: 60px; }
-.looks .sep { color: var(--faint); }
-.look { color: var(--muted); outline: none; }
-.look:focus-visible { text-decoration: underline; }
-.look:hover { color: var(--ink); }
-.look.on { color: var(--accent); font-weight: 700; }
-.bar-row { display: flex; align-items: center; gap: 26px; min-height: 26px; min-width: 0; }
-.quick { display: flex; align-items: center; gap: 22px; min-width: 0; overflow: hidden; }
-.quick .field { display: flex; align-items: center; gap: 10px; padding: 0; }
-.quick input[type=range] { width: 90px; flex: none; }
-.quick .num { width: 46px; }
-.quick .text { width: 78px; }
-.quick .none-tag { display: none; }
-.seg { display: flex; gap: 12px; }
-.seg button { color: var(--muted); }
-.seg button.on { color: var(--ink); text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 4px; text-decoration-thickness: 2px; }
-.status { flex: none; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* ── bottom bar ─────────────────────────────────────────────────────── */
+footer { border-top: 1px solid var(--line); padding: 8px 16px; display: grid; gap: 6px; min-width: 0; }
+.timeline { display: none; align-items: center; gap: 12px; color: var(--muted); }
+.timeline.on { display: flex; }
+.timeline input { flex: 1; }
+.bar-row { display: flex; align-items: center; gap: 16px; min-height: 32px; min-width: 0; }
+.look-pick { display: flex; align-items: center; gap: 8px; }
+.look-pick label, .quick .field label { color: var(--muted); }
+.look-pick select { height: 30px; width: 170px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--hover); }
+.seg button { height: 26px; padding: 0 12px; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; font-weight: 500; }
+.seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.quick { display: flex; align-items: center; gap: 18px; min-width: 0; overflow: hidden; }
+.quick .field { display: flex; align-items: center; gap: 8px; padding: 0; }
+.quick input[type=range] { width: 80px; flex: none; }
+.quick .num { width: 52px; }
+.quick .text, .quick .none-tag { display: none; }
+.status { flex: 0 1 auto; max-width: 34%; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status .err { color: var(--bad); }
-.thumbtip { position: fixed; z-index: 60; width: 150px; height: 150px; pointer-events: none; display: none; object-fit: cover; background: var(--stage); }
 
-/* ── settings drawer ────────────────────────────────────────────────── */
-.drawer { position: fixed; top: 44px; right: 0; bottom: 0; width: 360px; z-index: 20; background: var(--panel); border-left: 1px solid var(--line);
-  display: flex; flex-direction: column; transform: translateX(100%); transition: transform .18s ease; visibility: hidden; }
+/* ── side panel ─────────────────────────────────────────────────────── */
+.drawer { position: fixed; top: 52px; right: 0; bottom: 0; width: 340px; z-index: 20; background: var(--panel); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; transform: translateX(100%); transition: transform .18s ease; visibility: hidden; box-shadow: -8px 0 24px rgba(0,0,0,.06); }
 .drawer.on { transform: none; visibility: visible; }
-.drawer-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px 8px; }
-.drawer-head b { font-weight: 700; }
-.search { flex: 1; min-width: 0; height: 26px; border: 0; border-bottom: 1px solid var(--line); background: none; outline: none; }
-.search:focus { border-bottom-color: var(--accent); }
-.drawer-body { flex: 1; overflow: auto; padding: 0 18px 12px; }
-.drawer-foot { display: flex; gap: 18px; padding: 10px 18px; border-top: 1px solid var(--line); }
-details.grp { margin-top: 12px; }
-details.grp summary { list-style: none; cursor: pointer; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 11px; padding: 4px 0; }
+.drawer-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.drawer-head .seg { flex: 1; } .drawer-head .seg button { flex: 1; }
+.pane { flex: 1; overflow: auto; display: none; }
+.pane.on { display: block; }
+.pane-pad { padding: 12px 14px; }
+.search { width: 100%; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); outline: none; }
+.search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.drawer-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.look-group { margin: 4px 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.look-group:not(:first-child) { margin-top: 16px; }
+.looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.look { padding: 0; border: 0; background: none; cursor: pointer; text-align: left; min-width: 0; }
+.look .thumb { aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--stage); border: 1px solid var(--line); }
+.look img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.look span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.look:hover .thumb { border-color: var(--faint); }
+.look.on .thumb { outline: 2px solid var(--accent); outline-offset: 1px; }
+.look.on span { color: var(--ink); font-weight: 600; }
+details.grp { border-bottom: 1px solid var(--line); }
+details.grp summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-weight: 600; }
 details.grp summary::-webkit-details-marker { display: none; }
-details.grp summary::before { content: "+ "; } details.grp[open] summary::before { content: "− "; }
-details.grp summary:hover { color: var(--ink); }
-details.grp summary .count { color: var(--accent); margin-left: 6px; }
-.field { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 10px; padding: 3px 0; }
+details.grp summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg); transition: transform .12s; margin-right: 2px; }
+details.grp[open] summary::before { transform: rotate(45deg); }
+details.grp summary:hover { background: var(--hover); }
+details.grp summary .count { margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; text-align: center; }
+details.grp summary .count:empty { display: none; }
+.grp-body { padding: 0 14px 10px; }
+.field { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; padding: 4px 0; }
 .field label { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.field.changed label { color: var(--ink); }
-.field.changed label::after { content: " •"; color: var(--accent); cursor: pointer; }
-.field .ctl { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.num, .text, .field select { height: 24px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line); background: none; outline: none; border-radius: 0; }
-.num { width: 54px; text-align: right; -moz-appearance: textfield; } .text, .field select { width: 100%; }
+.field.changed label { color: var(--ink); font-weight: 500; }
+.field .ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.num, .text, .field select { height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); outline: none; }
+.num { width: 58px; text-align: right; -moz-appearance: textfield; } .text, .field select { width: 100%; min-width: 0; }
 .num::-webkit-inner-spin-button { display: none; }
-.num:focus, .text:focus, .field select:focus { border-bottom-color: var(--accent); }
-.field select option { background: var(--panel); }
-input[type=color] { width: 20px; height: 20px; padding: 0; border: 1px solid var(--line); background: none; flex: none; }
-input[type=color]::-webkit-color-swatch-wrapper { padding: 0; } input[type=color]::-webkit-color-swatch { border: 0; }
-input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 16px; background: transparent; }
-input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--faint); }
-input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: -5px; border-radius: 50%; background: var(--ink); }
-input[type=range]:hover::-webkit-slider-thumb, input[type=range]:active::-webkit-slider-thumb { background: var(--accent); }
-input[type=range]::-moz-range-track { height: 1px; background: var(--faint); }
-input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border: 0; border-radius: 50%; background: var(--ink); }
-.switch { color: var(--muted); } .switch::before { content: "off"; }
-.switch.on { color: var(--accent); } .switch.on::before { content: "on"; }
+.num:focus, .text:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input[type=color] { width: 26px; height: 26px; padding: 2px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); flex: none; cursor: pointer; }
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; } input[type=color]::-webkit-color-swatch { border: 0; border-radius: 3px; }
+input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 18px; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--panel);
+  border: 1px solid var(--faint); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+input[type=range]:hover::-webkit-slider-thumb { border-color: var(--accent); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--panel); border: 1px solid var(--faint); }
+.switch { position: relative; width: 30px; height: 18px; border: 0; border-radius: 9px; background: var(--faint); cursor: pointer; padding: 0; transition: background .12s; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: left .12s; }
+.switch.on { background: var(--accent); } .switch.on::after { left: 14px; }
 .none-tag { color: var(--muted); display: flex; gap: 4px; align-items: center; white-space: nowrap; }
 
 /* ── toasts ─────────────────────────────────────────────────────────── */
-.toasts { position: fixed; left: 50%; top: 52px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 50; }
-.toast { max-width: 520px; padding: 7px 14px; background: var(--ink); color: var(--bg); animation: pop .15s ease-out; }
-.toast.err { background: var(--bad); color: #fff; }
-.toast.ok::before { content: "✓ "; color: var(--accent); }
-.toast ul { margin: 4px 0 0; padding-left: 18px; } .toast code { word-break: break-all; }
-.toast .bar { height: 2px; background: color-mix(in srgb, var(--bg) 25%, transparent); margin-top: 6px; }
-.toast .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-@keyframes pop { from { opacity: 0; transform: translateY(-4px); } }
+.toasts { position: fixed; right: 16px; top: 112px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 50; }
+.toast { max-width: 520px; padding: 8px 14px; border-radius: 8px; background: #27272a; color: #fafafa; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+.toast.err { background: var(--bad); }
+.toast ul { margin: 4px 0 0; padding-left: 18px; color: #d4d4d8; } .toast code { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.toast .bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.2); margin-top: 7px; overflow: hidden; }
+.toast .bar i { display: block; height: 100%; width: 0; background: #fff; transition: width .3s; }
 
-@media (max-width: 820px) { .hide-s { display: none !important; } header { gap: 14px; padding: 0 14px; } nav { gap: 12px; }
-  footer { padding: 8px 14px 10px; } .bar-row, .quick { flex-wrap: wrap; gap: 8px 18px; } .drawer { width: 100%; } }
+@media (max-width: 860px) { .hide-s { display: none !important; } header { padding: 0 10px; } footer { padding: 8px 10px; }
+  .bar-row, .quick { flex-wrap: wrap; gap: 8px 14px; } .drawer { width: 100%; } }
 </style>
 </head>
 <body>
@@ -164,19 +180,17 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border: 0; bord
     <span class="brand">dotfx</span>
     <span class="file" id="file"></span>
     <span class="spacer"></span>
-    <nav>
-      <button class="link" id="openBtn" title="Open a photo or video (O)">open</button>
-      <button class="link" id="camBtn" title="Webcam (W)">webcam</button>
-      <button class="link hide-s" id="matchBtn" title="Copy the look of a reference image (M)">match</button>
-      <button class="link hide-s" id="shuffleBtn" title="A random look (R)">shuffle</button>
-      <button class="link" id="settingsBtn" title="All settings (S)">settings</button>
-      <button class="link hide-s" id="cmdBtn" title="Copy the equivalent command line">copy command</button>
-      <button class="link hide-s" id="saveBtn" title="Download these settings as a preset">save preset</button>
-      <div class="menu" id="exportMenu">
-        <button class="link accent" id="exportBtn" title="Export (E)">export ↓</button>
-        <div class="menu-list" id="exportList"></div>
-      </div>
-    </nav>
+    <button class="btn" id="openBtn" title="Open a photo or video (O)">Open</button>
+    <button class="btn" id="camBtn" title="Use the webcam (W)">Webcam</button>
+    <button class="btn hide-s" id="matchBtn" title="Copy the look of a reference image (M)">Match reference</button>
+    <span class="divider hide-s"></span>
+    <button class="btn ghost hide-s" id="cmdBtn" title="Copy the equivalent command line">Copy command</button>
+    <button class="btn ghost hide-s" id="saveBtn" title="Download these settings as a preset file">Save preset</button>
+    <button class="btn" id="settingsBtn" title="Looks and settings (S)">Settings</button>
+    <div class="menu" id="exportMenu">
+      <button class="btn primary" id="exportBtn" title="Export (E)">Export</button>
+      <div class="menu-list" id="exportList"></div>
+    </div>
     <input type="file" id="fileInput" accept="image/*,video/*" hidden>
     <input type="file" id="refInput" accept="image/*" hidden>
   </header>
@@ -184,34 +198,34 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border: 0; bord
   <section class="stage" id="stage">
     <div class="viewport" id="viewport">
       <div class="canvas" id="canvas"><div class="checker"></div><img id="after" alt=""><img id="before" alt=""></div>
-      <div class="split" id="split"><i>↔</i></div>
-      <div class="tag" id="tagB" style="left:20px">before</div><div class="tag" id="tagA" style="right:20px">after</div>
+      <div class="split" id="split"><i></i></div>
+      <div class="tag" id="tagB" style="left:12px">Original</div><div class="tag" id="tagA" style="right:150px">Result</div>
     </div>
-    <div class="busy" id="busy"><span id="spin">·</span> <span id="busyText">rendering</span></div>
+    <div class="busy" id="busy"><span id="busyText">Rendering…</span></div>
     <div class="tools">
-      <button class="link" id="compareBtn" title="Before / after (C)">compare</button>
-      <button class="link" data-zoom="fit" title="Fit (F)">fit</button>
-      <button class="link" data-zoom="1" title="Actual pixels (1)">1:1</button>
-      <button class="link" data-zoom="2" title="2× (2)">2×</button>
+      <button class="btn small" id="compareBtn" title="Compare with the original (C)">Compare</button>
+      <button class="btn small" data-zoom="fit" title="Fit to window (F)">Fit</button>
+      <button class="btn small" data-zoom="1" title="Actual size (1)">100%</button>
+      <button class="btn small" data-zoom="2" title="200% (2)">200%</button>
     </div>
-    <div class="webcam-bar"><span class="rec" id="recDot">● rec</span><span id="camFps">—</span>
-      <button class="link" id="snapBtn">snapshot</button><button class="link accent" id="recBtn">record</button>
-      <button class="link" id="camStop">stop</button></div>
+    <div class="webcam-bar"><span class="rec" id="recDot">● Recording</span><span class="fps" id="camFps">—</span>
+      <button class="btn small" id="snapBtn">Snapshot</button><button class="btn small" id="recBtn">Record</button>
+      <button class="btn small" id="camStop">Stop camera</button></div>
     <div class="empty" id="empty"><div>
-      <h1>Drop a photo or video</h1><p>or</p>
-      <div class="row"><button class="link accent" id="openBtn2">open a file</button>
-        <button class="link" id="camBtn2">use webcam</button>
-        <button class="link" id="sampleBtn">try the sample</button></div>
+      <h1>Drop a photo or video here</h1><p>PNG, JPEG, WebP, MP4, MOV and more.</p>
+      <div class="row"><button class="btn primary" id="openBtn2">Open file</button>
+        <button class="btn" id="camBtn2">Use webcam</button>
+        <button class="btn" id="sampleBtn">Try a sample</button></div>
     </div></div>
     <video id="video" playsinline muted hidden></video>
     <canvas id="grab" hidden></canvas>
   </section>
 
   <footer>
-    <div class="timeline" id="timeline"><input type="range" id="time" min="0" max="1" step="0.04" value="0"><span id="timeLabel">0.0 / 0.0s</span></div>
-    <div class="looks" id="looks"></div>
+    <div class="timeline" id="timeline"><input type="range" id="time" min="0" max="1" step="0.04" value="0"><span id="timeLabel">0.0 / 0.0 s</span></div>
     <div class="bar-row">
-      <div class="seg" id="effectSeg"><button data-v="halftone">halftone</button><button data-v="dither">dither</button></div>
+      <div class="look-pick"><label for="lookSelect">Look</label><select id="lookSelect"></select></div>
+      <div class="seg" id="effectSeg"><button data-v="halftone">Halftone</button><button data-v="dither">Dither</button></div>
       <div class="quick" id="quick"></div>
       <span class="spacer"></span>
       <span class="status" id="status"><span id="st-msg"></span> <span id="st-render"></span> <span id="st-size"></span></span>
@@ -220,12 +234,17 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border: 0; bord
 </div>
 
 <aside class="drawer" id="drawer">
-  <div class="drawer-head"><b>settings</b><input class="search" id="search" placeholder="search  /"><button class="link" id="drawerClose" title="Close (Esc)">close</button></div>
-  <div class="drawer-body" id="settings"></div>
-  <div class="drawer-foot"><button class="link" id="resetBtn" title="Back to the look's values">reset</button>
-    <button class="link" id="compareBtn2" title="Before / after (C)">compare</button></div>
+  <div class="drawer-head">
+    <div class="seg"><button class="tab on" data-pane="looks">Looks</button><button class="tab" data-pane="settings">Adjust</button></div>
+    <button class="btn ghost small" id="drawerClose" title="Close (Esc)">Close</button>
+  </div>
+  <div class="pane on" id="pane-looks"><div class="pane-pad" id="looks"></div></div>
+  <div class="pane" id="pane-settings">
+    <div class="pane-pad"><input class="search" id="search" placeholder="Search settings"></div>
+    <div id="settings"></div>
+  </div>
+  <div class="drawer-foot"><button class="btn small" id="resetBtn" title="Restore the look's values">Reset changes</button></div>
 </aside>
-<img class="thumbtip" id="thumbtip" alt="">
 <div class="toasts" id="toasts"></div>
 
 <script>
@@ -238,11 +257,16 @@ async function apiJSON(path, body) {
   const r = await api(path, body === undefined ? {} : { method: "POST", body: JSON.stringify(body) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
 }
-const GROUP_NAMES = { effect: "effect", size: "size", tone: "tone", colors: "colors", halftone: "halftone screen",
-  dither: "dither", texture: "print texture", mask: "mask", clipping: "paper clipping" };
+const GROUP_NAMES = { effect: "Effect", size: "Size", tone: "Tone", colors: "Colors", halftone: "Halftone screen",
+  dither: "Dither", texture: "Print texture", mask: "Mask", clipping: "Paper clipping" };
 const HIDE = { halftone: "dither", dither: "halftone" };
 const NUMBER_ONLY = new Set(["seed", "width", "height"]);
-const PRESET_GROUPS = [n => n.startsWith("newsprint") || n.startsWith("sky-dither"), n => n.startsWith("bw-"), () => true];
+const PRESET_GROUPS = [["Reference looks", n => n.startsWith("newsprint") || n.startsWith("sky-dither")],
+  ["Black and white", n => n.startsWith("bw-")], ["More looks", () => true]];
+const QUICK_LABELS = { cells: "Dot size", cell: "Dot size", pixel: "Pixel size" };
+const human = name => { const s = name.replace(/_/g, " "); return s[0].toUpperCase() + s.slice(1); };
+const ACRONYMS = { bw: "B&W", cmyk: "CMYK", rgb: "RGB", cga: "CGA", led: "LED", pico8: "PICO-8", gameboy: "Game Boy", xerox: "Photocopy" };
+const lookName = n => human(n.split("-").map(w => ACRONYMS[w] || w).join(" "));
 
 const S = { schema: null, presets: [], media: null, look: {}, base: {}, preset: null, time: 0, thumbs: {},
   zoom: "fit", z: 1, x: 0, y: 0, nat: [0, 0], compare: false, split: 0.5, cam: null };
@@ -254,12 +278,7 @@ function toast(html, kind = "", ms = 3500) {
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function status(msg, kind = "") { const el = $("#st-msg"); el.textContent = msg; el.className = kind; }
-let spinTimer = 0;
-function busy(on, text = "rendering") {
-  $("#busy").classList.toggle("on", on); $("#busyText").textContent = text;
-  clearInterval(spinTimer);
-  if (on) { const f = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"; let i = 0; spinTimer = setInterval(() => $("#spin").textContent = f[i++ % f.length], 80); }
-}
+function busy(on, text = "Rendering…") { $("#busy").classList.toggle("on", on); $("#busyText").textContent = text; }
 
 // ---- settings model -----------------------------------------------------------------------
 const defaults = () => Object.fromEntries(S.schema.fields.map(f => [f.name, f.default]));
@@ -279,25 +298,7 @@ function setValue(name, v) {
   scheduleRender();
 }
 
-// ---- shuffle: a random look, nudged ---------------------------------------------------------
-const pick = a => a[Math.floor(Math.random() * a.length)];
-const INKS = ["#ff4f00", "#2f6bff", "#12a37f", "#e8344e", "#7a4dff", "#161616", "#0078bf", "#3a3a3c"];
-const PAPERS = ["#ffffff", "#f6f1e4", "#f3efe6", "#eef3f8", "#fdf1f4"];
-function shuffle() {
-  const p = pick(S.presets); applyPreset(p.name);
-  const L = S.look; const r = (a, b) => a + Math.random() * (b - a);
-  if (L.cells) L.cells = Math.round(L.cells * r(0.6, 1.5));
-  else if (L.effect === "halftone") L.cell = +(L.cell * r(0.7, 1.5)).toFixed(1);
-  L.contrast = +(L.contrast * r(0.9, 1.25)).toFixed(2);
-  if (L.effect === "halftone") L.angle = pick([0, 15, 22.5, 30, 45, 60, 75]);
-  if (L.mode === "mono" && Math.random() < 0.6) { L.ink = pick(INKS); L.paper = pick(PAPERS); }
-  if (Math.random() < 0.25) L.roughness = +r(0.1, 0.5).toFixed(2);
-  if (Math.random() < 0.2) L.grain = +r(0.1, 0.5).toFixed(2);
-  buildSettings(); markLooks(); scheduleRender(0);
-  toast(`shuffled from ${esc(p.name)}`, "", 1800);
-}
-
-// ---- settings: the drawer, plus a few in the bottom bar -------------------------------------
+// ---- settings: the side panel, plus a few in the bottom bar ---------------------------------
 function quickNames() {
   const size = S.look.cells ? "cells" : S.look.effect === "dither" ? "pixel" : "cell";
   return [size, "contrast", "brightness", "ink", "paper"];
@@ -315,27 +316,27 @@ function buildSettings() {
   for (const [g, list] of Object.entries(groups)) {
     const det = document.createElement("details"); det.className = "grp"; det.dataset.group = g;
     det.open = q !== "" || ["tone", "colors", "halftone", "dither"].includes(g);
-    det.innerHTML = `<summary>${GROUP_NAMES[g] || g}<span class="count"></span></summary><div class="grp-body"></div>`;
+    det.innerHTML = `<summary>${GROUP_NAMES[g] || human(g)}<span class="count"></span></summary><div class="grp-body"></div>`;
     for (const f of list) det.querySelector(".grp-body").append(fieldEl(f));
     root.append(det);
   }
   const quick = $("#quick"); quick.innerHTML = "";
-  for (const n of quickNames()) { const f = S.schema.fields.find(f => f.name === n); if (f) quick.append(fieldEl(f)); }
+  for (const n of quickNames()) { const f = S.schema.fields.find(f => f.name === n); if (f) quick.append(fieldEl(f, QUICK_LABELS[n])); }
   $$("#effectSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === S.look.effect));
   updateCounts();
 }
-function fieldEl(f) {
+function fieldEl(f, labelText) {
   const row = document.createElement("div"); row.className = "field"; row.dataset.name = f.name;
   row.title = f.help;
-  const label = document.createElement("label"); label.textContent = f.name.replace(/_/g, "-");
-  label.onclick = () => { if (row.classList.contains("changed")) setValue(f.name, S.base[f.name]); };
+  const label = document.createElement("label"); label.textContent = labelText || human(f.name);
   const ctl = document.createElement("div"); ctl.className = "ctl";
   if (f.type === "bool") {
-    const sw = document.createElement("button"); sw.className = "switch"; sw.onclick = () => setValue(f.name, !S.look[f.name]);
+    const sw = document.createElement("button"); sw.className = "switch"; sw.setAttribute("aria-label", human(f.name));
+    sw.onclick = () => setValue(f.name, !S.look[f.name]);
     ctl.append(sw);
   } else if (f.choices.length) {
     const sel = document.createElement("select");
-    sel.innerHTML = f.choices.map(c => `<option>${esc(c)}</option>`).join("");
+    sel.innerHTML = f.choices.map(c => `<option value="${esc(c)}">${esc(human(c))}</option>`).join("");
     sel.onchange = () => setValue(f.name, sel.value); ctl.append(sel);
   } else if (f.color) {
     const pickEl = document.createElement("input"); pickEl.type = "color";
@@ -345,7 +346,7 @@ function fieldEl(f) {
     ctl.append(pickEl, txt);
     if (f.none_ok) {
       const none = document.createElement("label"); none.className = "none-tag";
-      none.innerHTML = `<input type="checkbox"> none`;
+      none.innerHTML = `<input type="checkbox"> None`;
       none.querySelector("input").onchange = e => setValue(f.name, e.target.checked ? "none" : (f.default === "none" ? "#ffffff" : f.default));
       ctl.append(none);
     }
@@ -359,6 +360,7 @@ function fieldEl(f) {
     const num = document.createElement("input"); num.className = "num"; num.type = "number"; num.step = f.step;
     const cast = x => f.type === "int" ? Math.round(+x) : +x;
     range.oninput = () => setValue(f.name, cast(range.value));
+    range.ondblclick = () => setValue(f.name, S.base[f.name]);
     num.onchange = () => { if (num.value !== "") setValue(f.name, cast(num.value)); };
     ctl.append(range, num);
   } else {
@@ -397,42 +399,53 @@ function updateCounts() {
     det.querySelector(".count").textContent = n ? String(n) : "";
   }
 }
-function toggleDrawer(on = !$("#drawer").classList.contains("on")) {
+function toggleDrawer(on = !$("#drawer").classList.contains("on"), pane) {
   $("#drawer").classList.toggle("on", on); $("#settingsBtn").classList.toggle("on", on);
+  if (pane) showPane(pane);
+}
+function showPane(name) {
+  $$(".tab").forEach(x => x.classList.toggle("on", x.dataset.pane === name));
+  $$(".pane").forEach(p => p.classList.toggle("on", p.id === "pane-" + name));
 }
 
-// ---- looks: a row of names, with a thumbnail on hover ----------------------------------------
+// ---- looks: a dropdown in the bottom bar, thumbnails in the side panel -------------------------
+function lookOrder() {
+  const seen = new Set(), out = [];
+  for (const [title, member] of PRESET_GROUPS) {
+    const names = S.presets.map(p => p.name).filter(n => !seen.has(n) && member(n));
+    names.forEach(n => seen.add(n)); if (names.length) out.push([title, names]);
+  }
+  return out;
+}
 function buildLooks() {
-  const root = $("#looks"); root.innerHTML = ""; const seen = new Set();
-  PRESET_GROUPS.forEach((member, gi) => {
-    const names = S.presets.map(p => p.name).filter(n => !seen.has(n) && member(n)); if (!names.length) return;
-    names.forEach(n => seen.add(n));
-    if (gi) root.insertAdjacentHTML("beforeend", `<span class="sep">|</span>`);
+  const root = $("#looks"); root.innerHTML = "";
+  const sel = $("#lookSelect"); sel.innerHTML = `<option value="" hidden>Custom</option>`;
+  for (const [title, names] of lookOrder()) {
+    root.insertAdjacentHTML("beforeend", `<div class="look-group">${title}</div>`);
+    const grid = document.createElement("div"); grid.className = "looks";
+    const og = document.createElement("optgroup"); og.label = title;
     for (const n of names) {
       const p = S.presets.find(p => p.name === n);
       const b = document.createElement("button"); b.className = "look"; b.dataset.preset = n; b.title = p.description;
-      b.textContent = n; b.onclick = () => { $("#thumbtip").style.display = "none"; applyPreset(n); };
-      b.onmouseenter = () => showTip(b, n); b.onmouseleave = () => $("#thumbtip").style.display = "none";
-      root.append(b);
+      b.innerHTML = `<div class="thumb">${S.thumbs[n] ? `<img src="${S.thumbs[n]}" alt="">` : ""}</div><span>${esc(lookName(n))}</span>`;
+      b.onclick = () => applyPreset(n); grid.append(b);
+      og.insertAdjacentHTML("beforeend", `<option value="${esc(n)}">${esc(lookName(n))}</option>`);
     }
-  });
+    root.append(grid); sel.append(og);
+  }
   markLooks();
 }
-$("#looks").addEventListener("wheel", e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); e.currentTarget.scrollLeft += e.deltaY; } }, { passive: false });
-function showTip(el, name) {
-  const src = S.thumbs[name]; const tip = $("#thumbtip"); if (!src) return;
-  const r = el.getBoundingClientRect(); tip.src = src; tip.style.display = "block";
-  tip.style.left = Math.min(Math.max(r.left + r.width / 2 - 75, 8), innerWidth - 158) + "px"; tip.style.top = r.top - 160 + "px";
-}
+$("#lookSelect").onchange = e => { if (e.target.value) applyPreset(e.target.value); e.target.blur(); };
 function markLooks() {
   $$(".look").forEach(b => b.classList.toggle("on", b.dataset.preset === S.preset));
-  const on = $(".look.on"); if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const sel = $("#lookSelect"); sel.value = S.presets.some(p => p.name === S.preset) ? S.preset : "";
+  if (!sel.value) sel.options[0].textContent = S.preset && S.preset.startsWith("matched") ? "Matched reference" : "Custom";
 }
 async function loadThumbs() {
   if (!S.media) return;
   const id = S.media.id;
   try { const list = await apiJSON("/api/thumbs", { media: id, time: 0 });
-    if (S.media && S.media.id === id) S.thumbs = Object.fromEntries(list.map(t => [t.preset, t.src])); }
+    if (S.media && S.media.id === id) { S.thumbs = Object.fromEntries(list.map(t => [t.preset, t.src])); buildLooks(); } }
   catch (e) { status(e.message, "err"); }
 }
 
@@ -453,8 +466,8 @@ async function doRender() {
     const [w, h] = r.headers.get("X-Size").split("x").map(Number); const k = +r.headers.get("X-Scale");
     const first = S.nat[0] !== w || S.nat[1] !== h; S.nat = [w, h]; if (first) layout();
     $("#st-render").textContent = `${r.headers.get("X-Render-Ms")} ms`;
-    $("#st-size").textContent = `· ${w}×${h}` + (k < 1 ? ` · preview ${Math.round(k * 100)}%` : "");
-    status(k < 1 ? "large image, export is full size ·" : ""); loadBefore();
+    $("#st-size").textContent = `· ${w} × ${h}` + (k < 1 ? ` · preview at ${Math.round(k * 100)}%` : "");
+    status(k < 1 ? "Exports use the full size ·" : ""); loadBefore();
   } catch (e) { status(e.message, "err"); }
   finally { inflight = false; busy(false); if (pending) doRender(); }
 }
@@ -470,7 +483,7 @@ async function loadBefore() {
 // ---- viewport ---------------------------------------------------------------------------------
 function layout() {
   const vp = $("#viewport").getBoundingClientRect(); const [w, h] = S.nat; if (!w) return;
-  if (S.zoom === "fit") { S.z = Math.min((vp.width - 48) / w, (vp.height - 48) / h, 4); S.x = (vp.width - w * S.z) / 2; S.y = (vp.height - h * S.z) / 2; }
+  if (S.zoom === "fit") { S.z = Math.min((vp.width - 64) / w, (vp.height - 64) / h, 4); S.x = (vp.width - w * S.z) / 2; S.y = (vp.height - h * S.z) / 2; }
   apply();
 }
 function apply() {
@@ -510,22 +523,22 @@ function setZoom(v) {
   addEventListener("resize", () => { if (S.zoom === "fit") layout(); else apply(); });
 })();
 function toggleCompare() { S.compare = !S.compare; $("#viewport").classList.toggle("compare", S.compare);
-  $("#compareBtn").classList.toggle("on", S.compare); $("#compareBtn2").classList.toggle("on", S.compare); apply(); }
+  $("#compareBtn").classList.toggle("on", S.compare); apply(); }
 
 // ---- media ------------------------------------------------------------------------------------
 function setMedia(m) {
   S.media = m; S.time = 0; S.nat = [0, 0]; S.zoom = "fit"; beforeKey = ""; S.thumbs = {};
   $("#empty").style.display = m ? "none" : "";
-  $("#file").textContent = m ? `${m.name} · ${m.width}×${m.height}${m.kind === "video" ? ` · ${m.duration.toFixed(1)}s` : ""}` : "";
+  $("#file").textContent = m ? `${m.name} — ${m.width} × ${m.height}${m.kind === "video" ? `, ${m.duration.toFixed(1)} s` : ""}` : "";
   const tl = $("#timeline"); tl.classList.toggle("on", !!m && m.kind === "video");
   if (m && m.kind === "video") { const t = $("#time"); t.max = Math.max(m.duration - 1 / m.fps, 0); t.step = 1 / m.fps; t.value = 0; timeLabel(); }
-  buildExportMenu(); if (m) { scheduleRender(0); loadThumbs(); }
+  buildExportMenu(); buildLooks(); if (m) { scheduleRender(0); loadThumbs(); }
 }
-function timeLabel() { $("#timeLabel").textContent = `${S.time.toFixed(2)} / ${S.media.duration.toFixed(1)}s`; }
+function timeLabel() { $("#timeLabel").textContent = `${S.time.toFixed(2)} / ${S.media.duration.toFixed(1)} s`; }
 $("#time").oninput = e => { S.time = +e.target.value; timeLabel(); scheduleRender(60); };
 async function openFile(file) {
   if (!file) return; stopCam();
-  const t = toast(`opening ${esc(file.name)}…`, "", 0);
+  const t = toast(`Opening ${esc(file.name)}…`, "", 0);
   try { const r = await api(`/api/upload?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
     const j = await r.json(); if (!r.ok) throw new Error(j.error); setMedia(j); t.remove(); }
   catch (e) { t.remove(); toast(esc(e.message), "err"); }
@@ -542,8 +555,8 @@ $("#sampleBtn").onclick = async () => setMedia(await apiJSON("/api/sample"));
 // ---- export / preset / command / match ----------------------------------------------------------
 function buildExportMenu() {
   const v = S.media && S.media.kind === "video";
-  const items = [["png", "png", "lossless"], ["jpg", "jpeg", "small"], ["svg", "svg", "vector dots"], ["pdf", "pdf", "for print"]];
-  if (v) items.push(null, ["mp4", "mp4", "with audio"], ["webm", "webm", ""], ["gif", "gif", "loops"]);
+  const items = [["png", "PNG image", "Lossless"], ["jpg", "JPEG image", "Smaller file"], ["svg", "SVG vector", "Editable dots"], ["pdf", "PDF vector", "For print"]];
+  if (v) items.push(null, ["mp4", "MP4 video", "With audio"], ["webm", "WebM video", ""], ["gif", "Animated GIF", ""]);
   $("#exportList").innerHTML = items.map(i => i ? `<button data-fmt="${i[0]}">${i[1]} <small>${i[2]}</small></button>` : "<hr>").join("");
   $$("#exportList button").forEach(b => b.onclick = () => { $("#exportMenu").classList.remove("open"); exportAs(b.dataset.fmt); });
 }
@@ -551,49 +564,49 @@ $("#exportBtn").onclick = e => { e.stopPropagation(); $("#exportMenu").classList
 addEventListener("click", () => $("#exportMenu").classList.remove("open"));
 function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 async function exportAs(fmt) {
-  if (!S.media) return toast("open something first", "err");
+  if (!S.media) return toast("Open a file first.", "err");
   const body = JSON.stringify({ media: S.media.id, settings: changed(), format: fmt, time: S.time });
   if (["mp4", "webm", "gif"].includes(fmt)) {
-    const t = toast(`rendering ${fmt} <span class="pct">0%</span><div class="bar"><i></i></div>`, "", 0);
+    const t = toast(`Exporting ${fmt.toUpperCase()}… <span class="pct">0%</span><div class="bar"><i></i></div>`, "", 0);
     try { const r = await api("/api/export", { method: "POST", body }); const job = await r.json(); if (!r.ok) throw new Error(job.error);
       while (true) { await new Promise(res => setTimeout(res, 500)); const j = await apiJSON(`/api/job/${job.id}`);
         const pct = j.total ? Math.min(100, Math.round(j.done / j.total * 100)) : 0;
-        $(".bar i", t).style.width = pct + "%"; $(".pct", t).textContent = `${pct}% · ${j.done}${j.total ? "/" + j.total : ""} frames`;
+        $(".bar i", t).style.width = pct + "%"; $(".pct", t).textContent = `${pct}% (${j.done}${j.total ? " of " + j.total : ""} frames)`;
         if (j.state === "error") throw new Error(j.error);
         if (j.state === "done") { const f = await api(`/api/job/${job.id}/file`); download(await f.blob(), j.name); break; } }
-      t.remove(); toast(`exported ${fmt}`, "ok"); }
+      t.remove(); toast(`Exported ${esc(fmt.toUpperCase())} video.`); }
     catch (e) { t.remove(); toast(esc(e.message), "err", 8000); }
     return;
   }
-  const t = toast(`exporting ${fmt}…`, "", 0);
+  const t = toast(`Exporting ${fmt.toUpperCase()}…`, "", 0);
   try { const r = await api("/api/export", { method: "POST", body }); if (!r.ok) throw new Error((await r.json()).error);
     const name = (r.headers.get("Content-Disposition").match(/filename="(.+)"/) || [])[1] || "dotfx." + fmt;
-    download(await r.blob(), name); t.remove(); toast(`saved ${esc(name)}`, "ok"); }
+    download(await r.blob(), name); t.remove(); toast(`Saved ${esc(name)}`); }
   catch (e) { t.remove(); toast(esc(e.message), "err"); }
 }
 $("#saveBtn").onclick = async () => { const r = await api("/api/preset", { method: "POST", body: JSON.stringify({ settings: changed() }) });
   download(await r.blob(), (S.preset || "dotfx-look").replace(/[^\w.-]+/g, "-") + ".toml");
-  toast("preset saved · use it with <code>dotfx photo.jpg -p FILE.toml</code>", "ok"); };
+  toast("Preset saved. Use it with <code>dotfx photo.jpg -p FILE.toml</code>"); };
 $("#cmdBtn").onclick = async () => {
   const j = await apiJSON("/api/command", { media: S.media && S.media.id, settings: changed() });
-  try { await navigator.clipboard.writeText(j.command); toast("command copied", "ok"); }
+  try { await navigator.clipboard.writeText(j.command); toast("Command copied to clipboard."); }
   catch { toast("<code>" + esc(j.command) + "</code>", "", 12000); }
 };
 $("#matchBtn").onclick = () => $("#refInput").click();
 $("#refInput").onchange = async e => {
   const file = e.target.files[0]; if (!file) return; e.target.value = "";
-  const t = toast(`measuring ${esc(file.name)}…`, "", 0);
+  const t = toast(`Analyzing ${esc(file.name)}…`, "", 0);
   try { const r = await api(`/api/match?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
     S.preset = "matched: " + file.name; S.base = { ...defaults(), ...j.settings }; S.look = { ...S.base };
     buildSettings(); markLooks(); scheduleRender(0);
-    t.remove(); toast(`matched ${esc(file.name)}<ul>${j.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>`, "ok", 10000); }
+    t.remove(); toast(`Matched ${esc(file.name)}<ul>${j.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>`, "", 10000); }
   catch (e) { t.remove(); toast(esc(e.message), "err", 8000); }
 };
 $("#resetBtn").onclick = () => { S.look = { ...S.base }; buildSettings(); scheduleRender(0); };
-$("#compareBtn").onclick = toggleCompare; $("#compareBtn2").onclick = toggleCompare;
-$("#shuffleBtn").onclick = shuffle;
+$("#compareBtn").onclick = toggleCompare;
 $("#settingsBtn").onclick = () => toggleDrawer(); $("#drawerClose").onclick = () => toggleDrawer(false);
+$$(".tab").forEach(b => b.onclick = () => showPane(b.dataset.pane));
 $$("[data-zoom]").forEach(b => b.onclick = () => setZoom(b.dataset.zoom));
 $("#search").oninput = buildSettings;
 $$("#effectSeg button").forEach(b => b.onclick = () => setValue("effect", b.dataset.v));
@@ -603,12 +616,12 @@ async function startCam() {
   if (S.cam) return;
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 } }, audio: false }); }
-  catch (e) { return toast("camera unavailable: " + esc(e.message), "err", 7000); }
+  catch (e) { return toast("Camera unavailable: " + esc(e.message), "err", 7000); }
   const v = $("#video"); v.srcObject = stream; await v.play();
   S.cam = { stream, run: true, frames: [], recorder: null, chunks: [] };
   $("#stage").classList.add("webcam"); $("#empty").style.display = "none";
   $("#camBtn").classList.add("on"); $("#timeline").classList.remove("on");
-  $("#file").textContent = `webcam · ${v.videoWidth}×${v.videoHeight}`;
+  $("#file").textContent = `Webcam — ${v.videoWidth} × ${v.videoHeight}`;
   const still = await grab(480, "image/jpeg");  // a still for the look thumbnails
   api(`/api/upload?name=webcam.jpg`, { method: "POST", body: still }).then(r => r.json()).then(m => { S.media = m; loadThumbs(); buildExportMenu(); });
   camLoop();
@@ -635,7 +648,7 @@ async function camLoop() {
       if (S.cam && S.cam.frames.length > 10) S.cam.frames.shift();
       const avg = S.cam ? S.cam.frames.reduce((a, b) => a + b, 0) / S.cam.frames.length : 0;
       $("#camFps").textContent = `${(1000 / avg).toFixed(1)} fps`;
-      $("#st-render").textContent = `${r.headers.get("X-Render-Ms")} ms/frame`; $("#st-size").textContent = `· ${img.naturalWidth}×${img.naturalHeight}`;
+      $("#st-render").textContent = `${r.headers.get("X-Render-Ms")} ms per frame`; $("#st-size").textContent = `· ${img.naturalWidth} × ${img.naturalHeight}`;
     } catch (e) { status(e.message, "err"); await new Promise(res => setTimeout(res, 500)); }
   }
 }
@@ -651,7 +664,7 @@ async function snapshot() {
   if (!S.cam) return;
   const blob = await grab(4096);
   const r = await api("/api/frame?png=1", { method: "POST", body: blob, headers: { "X-Settings": JSON.stringify(changed()) } });
-  download(await r.blob(), `dotfx-snapshot-${Date.now()}.png`); toast("snapshot saved", "ok");
+  download(await r.blob(), `dotfx-snapshot-${Date.now()}.png`); toast("Snapshot saved.");
 }
 $("#snapBtn").onclick = snapshot;
 $("#recBtn").onclick = () => {
@@ -662,8 +675,8 @@ $("#recBtn").onclick = () => {
   const rec = new MediaRecorder(recCanvas.captureStream(20), { mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm" });
   cam.chunks = []; rec.ondataavailable = e => cam.chunks.push(e.data);
   rec.onstop = () => { download(new Blob(cam.chunks, { type: "video/webm" }), `dotfx-live-${Date.now()}.webm`);
-    cam.recorder = null; $("#stage").classList.remove("recording"); $("#recBtn").textContent = "record"; toast("recording saved", "ok"); };
-  rec.start(500); cam.recorder = rec; $("#stage").classList.add("recording"); $("#recBtn").textContent = "stop recording";
+    cam.recorder = null; $("#stage").classList.remove("recording"); $("#recBtn").textContent = "Record"; toast("Recording saved."); };
+  rec.start(500); cam.recorder = rec; $("#stage").classList.add("recording"); $("#recBtn").textContent = "Stop recording";
 };
 
 // ---- keyboard -------------------------------------------------------------------------------------
@@ -675,12 +688,11 @@ addEventListener("keydown", e => {
   else if (k === "c") toggleCompare(); else if (k === "o") $("#fileInput").click();
   else if (k === "w") (S.cam ? stopCam() : startCam());
   else if (k === "m") $("#refInput").click();
-  else if (k === "r") shuffle();
   else if (k === "s") toggleDrawer();
   else if (k === " " && S.cam) { e.preventDefault(); snapshot(); }
   else if (k === "e") { e.stopPropagation(); $("#exportMenu").classList.toggle("open"); }
-  else if (k === "/") { e.preventDefault(); toggleDrawer(true); $("#search").focus(); }
-  else if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const names = $$(".look").map(b => b.dataset.preset);
+  else if (k === "/") { e.preventDefault(); toggleDrawer(true, "settings"); $("#search").focus(); }
+  else if (e.key === "ArrowRight" || e.key === "ArrowLeft") { const names = lookOrder().flatMap(([, n]) => n);
     const i = names.indexOf(S.preset); applyPreset(names[(i + (e.key === "ArrowRight" ? 1 : -1) + names.length) % names.length]); }
 });
 
@@ -688,7 +700,7 @@ addEventListener("keydown", e => {
 (async () => {
   try {
     [S.schema, S.presets] = await Promise.all([apiJSON("/api/schema"), apiJSON("/api/presets")]);
-  } catch (e) { document.body.innerHTML = `<pre style="padding:40px">dotfx: can't reach the engine (${esc(e.message)}).\nopen the link printed in your terminal.</pre>`; return; }
+  } catch (e) { document.body.innerHTML = `<p style="padding:40px">dotfx can't reach its engine (${esc(e.message)}). Open the link printed in your terminal.</p>`; return; }
   const init = await apiJSON("/api/state");
   S.preset = init.preset; S.base = { ...defaults(), ...(S.presets.find(p => p.name === init.preset) || { settings: {} }).settings };
   S.look = { ...defaults(), ...init.settings };
