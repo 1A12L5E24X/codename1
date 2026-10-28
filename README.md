@@ -165,8 +165,8 @@ command line. It has:
 
 - **Preview:** full resolution, with zoom (scroll), pan (drag), 1:1 and 2×, and a
   draggable before/after split.
-- **Looks:** every preset as a thumbnail rendered from your own image. ← → steps
-  through them.
+- **Looks:** every preset by name, with a preview of your own image on hover.
+  ← → steps through them.
 - **Settings:** every setting as sliders, switches, menus and color pickers,
   grouped and searchable. Values changed from the preset are marked.
 - **Video:** a timeline to scrub through, and export to MP4, WebM or GIF with a
@@ -177,12 +177,11 @@ command line. It has:
 - **Match a reference:** drop in an image of the look you want and it's applied.
 - **Export:** PNG, JPEG, SVG and PDF at full resolution. Also *Save preset*
   (`.toml`) and *Copy command* (the equivalent command line).
-- **Command line:** the header shows the `dotfx` command for the current look as
-  you change it. Click it to copy.
 - **Shuffle (R):** a random look with random tweaks.
-- **Themes (T):** bright *paper* or dark *neon*. Your choice is remembered.
 
-Every button shows its keyboard key.
+The image takes up most of the window. Looks and the most-used settings sit in
+one line underneath it, and every setting is in the **settings** panel (S). It
+follows your system's light or dark mode.
 
 Large images preview at a reduced size to stay quick. Exports always use the
 full size.
