@@ -35,14 +35,78 @@ Around those engines:
 
 ## Install
 
-Requires Python 3.11+, plus ffmpeg on your `PATH` for video.
+You need **Python 3.11 or newer**, and **ffmpeg** if you want video or the webcam.
+
+### macOS
+
+Homebrew's Python won't let `pip` install into it (`externally-managed-environment`),
+so use [pipx](https://pipx.pypa.io), which gives the tool its own environment and
+still puts `codename1` on your PATH:
 
 ```sh
-pip install .            # numpy + Pillow
-pip install '.[fast]'    # + numba: error-diffusion dithers ~80x faster
+brew install pipx ffmpeg
+pipx ensurepath                 # then close and reopen the terminal
+
+git clone https://github.com/1a12l5e24x/codename1.git
+cd codename1
+pipx install '.[fast]'
 ```
 
-You can also run it without installing: `python -m codename1 ...`.
+### Linux
+
+```sh
+sudo apt install pipx ffmpeg    # Debian/Ubuntu; use your distro's package manager otherwise
+pipx ensurepath                 # then reopen the terminal
+
+git clone https://github.com/1a12l5e24x/codename1.git
+cd codename1
+pipx install '.[fast]'
+```
+
+### Windows
+
+```powershell
+winget install Python.Python.3.12 Gyan.FFmpeg
+py -m pip install --user pipx
+py -m pipx ensurepath           # then reopen the terminal
+
+git clone https://github.com/1a12l5e24x/codename1.git
+cd codename1
+pipx install ".[fast]"
+```
+
+### Check it works
+
+```sh
+codename1                       # the overview screen
+codename1 app docs/newsprint.jpg
+```
+
+After installing, `codename1` works from any folder. File paths are read from
+the folder you're in, so use full paths for files elsewhere
+(`codename1 app ~/Pictures/photo.jpg`; dragging a file into the terminal pastes
+its path). Results are saved next to the input unless you pass `-o`. It never
+needs `sudo`.
+
+### Notes
+
+- **`[fast]`** adds numba, which makes error-diffusion dithers (Atkinson,
+  Floyd–Steinberg…) about 80× faster. If it fails to build (it can lag behind
+  the newest Python), install without it: `pipx install .`. Everything still
+  works.
+- **Update** after pulling new changes: `git pull && pipx install --force '.[fast]'`.
+- **Uninstall:** `pipx uninstall codename1`.
+- **Without pipx:** use a virtual environment. `codename1` then only works
+  while it's activated.
+
+  ```sh
+  python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+  pip install '.[fast]'
+  ```
+- **Without installing:** run `python3 -m codename1 ...` from the repository
+  folder (needs numpy and Pillow).
+- **Webcam on macOS:** the first run asks for camera access for your terminal
+  app (System Settings → Privacy & Security → Camera).
 
 ## Quick start
 
@@ -65,6 +129,33 @@ codename1 gallery photo.jpg                      # every preset on one sheet
 `render` is the default command, so `codename1 photo.jpg ...` is the same as
 `codename1 render photo.jpg ...`. Running `codename1` on its own shows a short overview
 of the commands.
+
+## Four ways to use it
+
+| you want to… | command |
+|---|---|
+| convert files | `codename1 photo.jpg -p newsprint` |
+| adjust visually in the browser | `codename1 app photo.jpg` |
+| adjust in the terminal | `codename1 tune photo.jpg` |
+| see the webcam live in the terminal | `codename1 live -p sky-dither` |
+
+The settings you'll reach for most:
+
+| setting | what it does |
+|---|---|
+| `-p NAME` | the look (see [Presets](#presets)) |
+| `-o FILE` | output file; the extension picks the format (`.png .jpg .webp .svg .pdf .mp4 .gif …`) |
+| `--cells N` | dot size as N dots across the image (`--cell` / `--pixel` for pixels) |
+| `--contrast` `--brightness` `--gamma` | tone |
+| `--ink` `--paper` | colors: names, `#hex` or `r,g,b` |
+| `--angle` `--spot` | halftone screen angle and dot shape |
+| `-e dither --algorithm NAME` | dither type: `bayer8`, `bluenoise`, `atkinson`… |
+| `--roughness` `--grain` `--bleed` | print wear |
+| `--compare` | save the original next to the result |
+| `--save-preset FILE.toml` | keep these settings; reuse with `-p FILE.toml` |
+
+`codename1 COMMAND -h` explains each command, and `codename1 render -h` lists
+every setting.
 
 ## Presets
 
@@ -183,6 +274,24 @@ It's laid out like plotter software: every setting is listed down the left as a
 value box with a flat bar slider, the commands are written with their keys
 (`(O)PEN FILE`, `(E)XPORT`, `RESET : BACKSPACE`), and a small card on the image
 shows its size and render time.
+
+| key | action |
+|---|---|
+| O | open a file (or drop one on the window) |
+| W | webcam on / off |
+| M | match a reference image |
+| L | looks, as thumbnails |
+| C | before / after split (drag the divider) |
+| E | export menu |
+| F / 1 / 2 | zoom to fit / 100% / 200% (scroll to zoom, drag to pan) |
+| ← → | previous / next look |
+| / | search settings |
+| Backspace | reset to the look's values |
+| Space | webcam snapshot |
+| Esc | close menus |
+
+Type in a value box or drag its bar; double-click a bar to reset that one
+setting. Stop the app with Ctrl-C in the terminal.
 
 Large images preview at a reduced size to stay quick. Exports always use the
 full size.
