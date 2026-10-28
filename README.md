@@ -165,8 +165,9 @@ command line. It has:
 
 - **Preview:** full resolution, with zoom (scroll), pan (drag), 1:1 and 2×, and a
   draggable before/after split.
-- **Looks:** every preset as a thumbnail rendered from your own image, or pick
-  one from the menu in the bottom bar. ← → steps through them.
+- **Looks:** pick one from the menu at the top of the panel, or press `L` for
+  every preset as a thumbnail rendered from your own image. ← → steps through
+  them.
 - **Settings:** every setting as sliders, switches, menus and color pickers,
   grouped and searchable. Values changed from the preset are marked.
 - **Video:** a timeline to scrub through, and export to MP4, WebM or GIF with a
@@ -178,10 +179,10 @@ command line. It has:
 - **Export:** PNG, JPEG, SVG and PDF at full resolution. Also *Save preset*
   (`.toml`) and *Copy command* (the equivalent command line).
 
-The image takes up most of the window. The look and the most-used settings sit
-in one bar underneath it; every look and every setting is in the **Settings**
-panel (S). It looks like a terminal app: dark, monospace, with the keys listed
-along the bottom.
+It's laid out like plotter software: every setting is listed down the left as a
+value box with a flat bar slider, the commands are written with their keys
+(`(O)PEN FILE`, `(E)XPORT`, `RESET : BACKSPACE`), and a small card on the image
+shows its size and render time.
 
 Large images preview at a reduced size to stay quick. Exports always use the
 full size.
