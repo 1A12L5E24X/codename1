@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
+import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -25,13 +28,13 @@ GOOD = ui.GOOD
 REC = ui.BAD
 
 
-def camera_input(source: str) -> list[str]:
+def camera_input(source: str, fps: float = 30) -> list[str]:
     """ffmpeg input arguments for a camera name/number or a device path."""
     if sys.platform.startswith("linux"):
         dev = source if source.startswith("/dev/") else f"/dev/video{source or 0}"
         return ["-f", "v4l2", "-i", dev]
     if sys.platform == "darwin":
-        return ["-f", "avfoundation", "-framerate", "30", "-i", f"{source or 0}:none"]
+        return ["-f", "avfoundation", "-framerate", f"{fps:g}", "-i", f"{source or 0}:none"]
     if sys.platform.startswith("win"):
         name = source if source and not source.isdigit() else _windows_camera(int(source or 0))
         return ["-f", "dshow", "-i", f"video={name}"]
@@ -60,8 +63,10 @@ class Capture:
         self.count = 0
         self.error = ""
         self._stop = False
+        self.log: list[str] = []
         if is_camera(source):
-            args = camera_input(source.removeprefix("camera").lstrip(":"))
+            self.camera = source.removeprefix("camera").lstrip(":")
+            args = camera_input(self.camera)
             w, h = width, 0  # height learned from ffmpeg's output line
         else:
             info = probe(Path(source)) if Path(source).exists() else None
@@ -70,30 +75,73 @@ class Capture:
                 raise MediaError(f"no such file: {source}")
             w = width
             h = int(round(info.height * width / info.width / 2)) * 2
-        vf = f"scale={w}:{h if h else -2},fps={fps}"
-        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-nostdin", *args, "-vf", vf, "-an",
-               "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.size = (w, h) if h else self._learn_size()
+        self.vf = f"scale={w}:{h if h else -2},fps={fps}"
+        self._start(args)
+        try:
+            if h:
+                self.size = (w, h)
+                threading.Thread(target=self._drain, daemon=True).start()
+            else:
+                self.size = self._learn_size(fps)
+        except BaseException:  # Ctrl+C or no camera: never leave ffmpeg holding it
+            self.close()
+            raise
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
 
-    def _learn_size(self) -> tuple[int, int]:
+    def _start(self, args: list[str]) -> None:
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-nostats", "-nostdin", *args, "-vf", self.vf,
+               "-an", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        self.log, self._stop = [], False
+        # Its own session: ffmpeg's camera input can ignore Ctrl+C and SIGTERM, so
+        # it shouldn't get them; close() kills it outright instead.
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     start_new_session=True)
+        atexit.register(self.close)
+
+    def _drain(self) -> None:
+        """Keep reading ffmpeg's log so a full pipe never stalls it; keep the tail."""
+        for raw in self.proc.stderr:
+            self.log = (self.log + [raw.decode(errors="replace").rstrip()])[-20:]
+
+    def _learn_size(self, fps: float) -> tuple[int, int]:
         """Camera output size, from ffmpeg's 'Output ... rgb24, WxH' line."""
-        seen_output = False
+        print("starting the camera…", file=sys.stderr, flush=True)
+        lines: list[str] = []
+        found: list[tuple[int, int]] = []
+
+        def scan() -> None:
+            seen_output = False
+            for raw in self.proc.stderr:
+                line = raw.decode(errors="replace").rstrip()
+                lines.append(line)
+                if line.startswith("Output #0"):
+                    seen_output = True
+                m = re.search(r"rgb24.*?(\d{2,5})x(\d{2,5})", line)
+                if seen_output and m:
+                    found.append((int(m.group(1)), int(m.group(2))))
+                    break
+            self.log = lines[-20:]
+            self._drain()
+
+        threading.Thread(target=scan, daemon=True).start()
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            line = self.proc.stderr.readline().decode(errors="replace")
-            if not line:
-                break
-            if line.startswith("Output #0"):
-                seen_output = True
-            m = re.search(r"rgb24.*?(\d{2,5})x(\d{2,5})", line)
-            if seen_output and m:
-                threading.Thread(target=self.proc.stderr.read, daemon=True).start()  # keep draining
-                return int(m.group(1)), int(m.group(2))
+        while not found and self.proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        time.sleep(0.05)  # let the scanner finish a line it was reading
+        if found:
+            return found[0]
         self.close()
-        raise MediaError("camera didn't start (is it connected, and is it free?)")
+        log = "\n".join(lines)
+        if "framerate" in log and "not supported" in log:
+            # The camera only offers some frame rates: pick one it lists, and retry.
+            rates = [float(r) for r in re.findall(r"@\[[\d.]+ ([\d.]+)\]fps", log)]
+            rate = min((r for r in rates if r >= fps), default=max(rates, default=0))
+            if rate and rate != getattr(self, "_rate", None):
+                self._rate = rate
+                self._start(camera_input(self.camera, rate))
+                return self._learn_size(fps)
+        raise MediaError(camera_problem(lines, self.proc.poll() is None))
 
     def _read(self) -> None:
         w, h = self.size
@@ -101,7 +149,8 @@ class Capture:
         while not self._stop:
             buf = self.proc.stdout.read(n)
             if len(buf) < n:
-                self.error = "stream ended"
+                errors = [line for line in self.log if "rror" in line]
+                self.error = f"stream ended: {errors[-1]}" if errors and not self._stop else "stream ended"
                 return
             self.frame = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
             self.count += 1
@@ -113,6 +162,25 @@ class Capture:
             self.proc.wait(timeout=2)
         except Exception:  # noqa: BLE001 - already gone
             pass
+
+
+def camera_problem(log: list[str], hung: bool) -> str:
+    """A readable reason the camera gave no picture, from ffmpeg's log."""
+    errors = [line.split("] ", 1)[-1] for line in log
+              if any(w in line for w in ("rror", "ailed", "not supported", "denied", "Invalid"))]
+    if errors:
+        msg = f"the camera didn't start: {errors[-1]}"
+    else:
+        msg = "the camera opened but sent no picture within 10 seconds"
+    if sys.platform == "darwin" and (hung or not errors):
+        app = os.environ.get("TERM_PROGRAM", "your terminal app")
+        msg += (f"\n  macOS may be blocking it: System Settings > Privacy & Security > Camera, turn on"
+                f" {app.capitalize() if app.islower() else app}, then restart it."
+                f"\n  Also check that no other app (FaceTime, Teams, Zoom…) is using the camera,"
+                f" or try another one: codename1 live 1")
+    else:
+        msg += "\n  is it connected, and not in use by another app?"
+    return msg
 
 
 class Recorder:
@@ -426,13 +494,21 @@ def run_live(source: str, s: Settings, base: str | None, width: int, fps: float,
     if reason:
         print(f"error: live {reason}", file=sys.stderr)
         return 2
-    cap = Capture(source, width, fps)
+    # Closing the terminal window sends SIGHUP: exit through the finally below so
+    # the camera is released and the terminal restored.
+    for name in ("SIGHUP", "SIGTERM"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), lambda *_: sys.exit(1))
+    try:
+        cap = Capture(source, width, fps)
+    except KeyboardInterrupt:
+        return 130
     graphics = detect_protocol() if preview_mode == "auto" else preview_mode
     live = LiveUI(cap, source, s, base, fps, out_dir, graphics)
-    if base is None and s == Settings():
-        live.set_preset("newsprint")  # nothing chosen: start somewhere that looks like something
     sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J")
     try:
+        if base is None and s == Settings():
+            live.set_preset("newsprint")  # nothing chosen: start somewhere that looks like something
         with term.Keyboard(mouse=True) as kb:
             while True:
                 live.update()
