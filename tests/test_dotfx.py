@@ -554,3 +554,88 @@ def test_home_screen(monkeypatch, capsys):
     home.show()
     out = capsys.readouterr().out
     assert "COMMANDS" in out and "match" in out and ("▀" in out or "█" in out)
+
+
+# --- browser app --------------------------------------------------------------------
+
+
+@pytest.fixture
+def app_server(tmp_path):
+    from dotfx.app import App
+
+    app = App(workdir=tmp_path).start()
+    base = f"http://127.0.0.1:{app.httpd.server_address[1]}"
+    yield app, base
+    app.stop()
+
+
+def _call(base, token, path, body=None, raw=None, headers=None):
+    import json
+    import urllib.request
+
+    data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
+    req = urllib.request.Request(base + path, data=data, headers={"X-Dotfx-Token": token, **(headers or {})},
+                                 method="POST" if data is not None else "GET")
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read(), dict(r.headers)
+
+
+def test_app_rejects_requests_without_the_token(app_server):
+    import urllib.error
+
+    app, base = app_server
+    with pytest.raises(urllib.error.HTTPError) as e:
+        _call(base, "nope", "/api/schema")
+    assert e.value.code == 403
+    page, _ = _call(base, app.state.token, f"/?t={app.state.token}")
+    assert b"<title>dotfx</title>" in page
+
+
+def test_app_render_export_and_match(app_server, tmp_path):
+    import io
+    import json
+
+    app, base = app_server
+    tok = app.state.token
+    schema = json.loads(_call(base, tok, "/api/schema")[0])
+    assert any(f["name"] == "cells" for f in schema["fields"])
+    buf = io.BytesIO()
+    Image.fromarray(photo()).save(buf, format="PNG")
+    media = json.loads(_call(base, tok, "/api/upload?name=p.png", raw=buf.getvalue())[0])
+    assert media["width"] == 360 and media["kind"] == "image"
+    png, headers = _call(base, tok, "/api/render", {"media": media["id"], "settings": {"cells": 40}})
+    assert Image.open(io.BytesIO(png)).size == (360, 300) and "X-Render-Ms" in headers
+    svg, _ = _call(base, tok, "/api/export", {"media": media["id"], "settings": {"cells": 40}, "format": "svg"})
+    assert svg.startswith(b"<svg")
+    # Match the rendered print back.
+    out = to_uint8(render(photo(), Settings().update({"cells": 40, "angle": 30})))
+    buf = io.BytesIO()
+    Image.fromarray(out).save(buf, format="PNG")
+    m = json.loads(_call(base, tok, "/api/match?name=ref.png", raw=buf.getvalue())[0])
+    assert m["settings"]["cells"] == 40 and m["notes"]
+    # Webcam frames.
+    buf = io.BytesIO()
+    Image.fromarray(photo()).save(buf, format="JPEG")
+    jpg, _ = _call(base, tok, "/api/frame", raw=buf.getvalue(), headers={"X-Settings": json.dumps({"cells": 30})})
+    assert Image.open(io.BytesIO(jpg)).size == (360, 300)
+
+
+def test_app_handoff_state(app_server, tmp_path):
+    import json
+
+    app, base = app_server
+    src = tmp_path / "x.png"
+    Image.fromarray(photo()).save(src)
+    url = app.open_with(src, Settings().update(load_preset("riso")), "riso")
+    assert url.startswith(base) and app.state.token in url
+    state = json.loads(_call(base, app.state.token, "/api/state")[0])
+    assert state["media"]["name"] == "x.png" and state["preset"] == "riso"
+    assert state["settings"]["ink"] == "riso-pink"
+
+
+def test_mouse_reports_parse():
+    from dotfx.term import parse_mouse
+
+    assert parse_mouse("\x1b[<0;12;40M\x1b[<0;12;40m") == "click:12:40"
+    assert parse_mouse("\x1b[<64;5;6M") == "wheelup:5:6"
+    assert parse_mouse("\x1b[<0;1;1m") == ""

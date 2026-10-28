@@ -28,6 +28,22 @@ def chips(items, gap: str = " ") -> str:
     return gap.join(f"{bg(CHIP)}{fg((220, 224, 240))} {k} {RESET}{fg(MUTED)} {t}{RESET}" for k, t in items)
 
 
+def chips_layout(items, x: int = 1, gap: int = 1) -> tuple[str, list[tuple[int, int, str]]]:
+    """Key chips starting at column x, plus their click regions (col_from, col_to, action).
+    items: (label, text, action) or (label, text, action, highlight)."""
+    parts, regions = [], []
+    for item in items:
+        label, text, action = item[:3]
+        hot = len(item) > 3 and item[3]
+        chip_bg, chip_fg = (ACCENT, INK_DARK) if hot else (CHIP, (220, 224, 240))
+        width = len(label) + 2 + 1 + len(text)
+        parts.append(f"{bg(chip_bg)}{fg(chip_fg)}{BOLD if hot else ''} {label} {RESET}"
+                     f"{fg(ACCENT if hot else MUTED)} {text}{RESET}")
+        regions.append((x, x + width - 1, action))
+        x += width + gap
+    return (" " * gap).join(parts), regions
+
+
 def box(x: int, y: int, w: int, h: int, title: str = "", right: str = "", color=LINE) -> list[str]:
     """Escape codes drawing a rounded frame at column x, row y (contents drawn separately)."""
     c = fg(color)

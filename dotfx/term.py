@@ -88,8 +88,17 @@ _WIN_KEYS = {"H": "up", "P": "down", "K": "left", "M": "right", "I": "pgup", "Q"
              "G": "home", "O": "end", "\x8d": "UP", "\x91": "DOWN", "t": "RIGHT", "s": "LEFT"}
 
 
+_MOUSE = re.compile(r"\x1b\[<(\d+);(\d+);(\d+)([Mm])")
+
+
 class Keyboard:
-    """Raw, unbuffered keyboard input as key names ('up', 'enter', 'q', ...)."""
+    """Raw, unbuffered keyboard input as key names ('up', 'enter', 'q', ...).
+
+    With mouse=True, clicks come back as 'click:COL:ROW' and the wheel as
+    'wheelup:COL:ROW' / 'wheeldown:COL:ROW' (1-based cells, SGR mouse mode)."""
+
+    def __init__(self, mouse: bool = False):
+        self.mouse = mouse and not WINDOWS
 
     def __enter__(self) -> "Keyboard":
         if WINDOWS:
@@ -101,12 +110,18 @@ class Keyboard:
             self.fd = sys.stdin.fileno()
             self.old = termios.tcgetattr(self.fd)
             tty.setcbreak(self.fd)
+            if self.mouse:
+                sys.stdout.write("\x1b[?1000h\x1b[?1006h")
+                sys.stdout.flush()
         return self
 
     def __exit__(self, *exc) -> None:
         if not WINDOWS:
             import termios
 
+            if self.mouse:
+                sys.stdout.write("\x1b[?1000l\x1b[?1006l")
+                sys.stdout.flush()
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
 
     def read(self, timeout: float | None) -> str:
@@ -127,8 +142,21 @@ class Keyboard:
         r, _, _ = select.select([self.fd], [], [], timeout)
         if not r:
             return ""
-        data = os.read(self.fd, 64).decode(errors="ignore")
+        data = os.read(self.fd, 256).decode(errors="ignore")
+        if data.startswith("\x1b[<"):
+            return parse_mouse(data)
         return _UNIX_KEYS.get(data, data if len(data) == 1 else "")
+
+
+def parse_mouse(data: str) -> str:
+    """First meaningful event in an SGR mouse report: a left press or a wheel step."""
+    for m in _MOUSE.finditer(data):
+        b, x, y, kind = int(m.group(1)), m.group(2), m.group(3), m.group(4)
+        if b == 0 and kind == "M":
+            return f"click:{x}:{y}"
+        if b in (64, 65):
+            return f"{'wheelup' if b == 64 else 'wheeldown'}:{x}:{y}"
+    return ""
 
 
 def _enable_windows_vt() -> None:

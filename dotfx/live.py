@@ -172,6 +172,7 @@ class LiveUI:
         self.seen, self.dirty = -1, False
         self._img_key = None
         self.enlarged = 1.0
+        self.want_browser = False
 
     # -- actions --------------------------------------------------------------
     def set_preset(self, name: str) -> None:
@@ -273,6 +274,7 @@ class LiveUI:
         sel = next((i for i, r in enumerate(self.rows) if r == ("preset", self.base)), 0)
         top = max(0, min(sel - list_h // 2, len(self.rows) - list_h))
         lines = []
+        self._row_names = [name if kind == "preset" else None for kind, name in self.rows[top:top + list_h]]
         for kind, name in self.rows[top:top + list_h]:
             if kind == "hdr":
                 rule = "─" * max(width - len(name) - 3, 0)
@@ -354,8 +356,11 @@ class LiveUI:
             for i in range(ih):
                 line = lines[i] if i < len(lines) else ""
                 out.append(f"\x1b[{body_y + 1 + i};{px + 1}H{fit(line, iw)}")
-        keys = ui.chips([("↑↓", "preset"), ("[ ]", "dot size"), ("space", "pause"), ("s", "snapshot"),
-                         ("r", "record"), ("g", "preview"), ("q", "quit")])
+        keys, self._chips = ui.chips_layout(
+            [("b", "open in browser", "b", True), ("↑↓", "preset", "down"), ("[ ]", "dot size", "]"),
+             ("space", "pause", "space"), ("s", "snapshot", "s"), ("r", "record", "r"), ("g", "preview", "g"),
+             ("q", "quit", "q")], x=2)
+        self._footer_row = rows
         color = GOOD if self.status_kind == "ok" else ui.MUTED
         icon = "✓ " if self.status_kind == "ok" else ""
         status = f"  {fg(color)}{icon}{self.status}{RESET}" if self.status else ""
@@ -363,7 +368,31 @@ class LiveUI:
         sys.stdout.write("".join(out))
         sys.stdout.flush()
 
+    def click(self, k: str) -> bool:
+        kind, x, y = k.split(":")
+        x, y = int(x), int(y)
+        if kind == "click" and y == getattr(self, "_footer_row", -1):
+            for x0, x1, action in getattr(self, "_chips", []):
+                if x0 <= x <= x1:
+                    return self.handle(action)
+            return True
+        names = getattr(self, "_row_names", [])
+        in_list = x <= 30 and 0 <= y - 3 < len(names)
+        if kind.startswith("wheel"):
+            return self.handle("up" if kind == "wheelup" else "down") if in_list else True
+        if in_list and names[y - 3]:
+            self.set_preset(names[y - 3])
+            sys.stdout.write("\x1b[2J")
+            self._img_key = None
+        return True
+
     def handle(self, k: str) -> bool:
+        if k.startswith(("click:", "wheelup:", "wheeldown:")):
+            return self.click(k)
+        if k == "b":
+            # The browser takes over the camera, so the terminal screen closes.
+            self.want_browser = True
+            return False
         if k in ("q", "esc"):
             return False
         if k in ("up", "P"):
@@ -404,7 +433,7 @@ def run_live(source: str, s: Settings, base: str | None, width: int, fps: float,
         live.set_preset("newsprint")  # nothing chosen: start somewhere that looks like something
     sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J")
     try:
-        with term.Keyboard() as kb:
+        with term.Keyboard(mouse=True) as kb:
             while True:
                 live.update()
                 live.draw()
@@ -421,4 +450,8 @@ def run_live(source: str, s: Settings, base: str | None, width: int, fps: float,
         sys.stdout.flush()
     if live.shots or live.status.startswith("recorded"):
         print(f"saved to {out_dir}")
+    if live.want_browser:
+        from .app import run_app
+
+        return run_app(None, live.s, live.base, 0, True, mode="webcam")
     return 0

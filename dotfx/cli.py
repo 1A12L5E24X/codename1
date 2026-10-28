@@ -30,7 +30,7 @@ from .pipeline import render, to_uint8
 from .presets import PRESETS, load_preset, to_toml
 from .settings import Settings
 
-COMMANDS = ("render", "presets", "gallery", "options", "tune", "match", "live")
+COMMANDS = ("render", "presets", "gallery", "options", "tune", "match", "live", "app")
 
 GROUP_TITLES = {
     "effect": "effect",
@@ -137,6 +137,16 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--columns", type=int, default=4, help="tiles per row [default: 4]")
 
     sub.add_parser("options", help="list every effect option with its default")
+
+    ap = sub.add_parser("app", help="open the browser interface (same engine, runs locally)",
+                        description="A local browser interface: full-resolution preview, sliders for every "
+                                    "setting, preset gallery, before/after, video, webcam, match and export.")
+    ap.add_argument("input", nargs="?", help="image or video to start with")
+    ap.add_argument("-p", "--preset", action="append", metavar="NAME|FILE.toml", help="starting preset")
+    ap.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: any free port)")
+    ap.add_argument("--no-open", action="store_true", help="just print the link, don't open a browser")
+    ap.add_argument("--webcam", action="store_true", help="start with the webcam")
+    add_setting_args(ap)
 
     lv = sub.add_parser("live", help="webcam (or any video/stream) through a preset, live in the terminal",
                         description="Live preview from a camera, video file or stream URL. Keys: p/P preset, "
@@ -557,6 +567,17 @@ def first_frame_or_image(src: Path) -> np.ndarray:
     return load_image(src)
 
 
+def cmd_app(args) -> int:
+    from .app import run_app
+
+    s = build_settings(args)
+    src = Path(args.input).expanduser() if args.input else None
+    if src is not None and not src.exists():
+        raise FileNotFoundError(f"no such file: {src}")
+    preset = args.preset[-1] if args.preset else None
+    return run_app(src, s, preset, args.port, not args.no_open, "webcam" if args.webcam else "edit")
+
+
 def cmd_live(args) -> int:
     from .live import run_live
 
@@ -605,7 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         commands = {
             "render": cmd_render, "presets": cmd_presets, "gallery": cmd_gallery,
-            "options": cmd_options, "tune": cmd_tune, "match": cmd_match, "live": cmd_live,
+            "options": cmd_options, "tune": cmd_tune, "match": cmd_match, "live": cmd_live, "app": cmd_app,
         }
         return commands[args.command](args)
     except (KeyError, ValueError, FileNotFoundError, MediaError) as e:

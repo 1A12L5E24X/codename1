@@ -276,8 +276,9 @@ class Progress:
         self.stream.flush()
 
 
-def ordered_map(fn, items, jobs: int, initializer=None, initargs=()):
-    """Like map(), in order, across processes, keeping a bounded number in flight."""
+def ordered_map(fn, items, jobs: int, initializer=None, initargs=(), start_method: str | None = None):
+    """Like map(), in order, across processes, keeping a bounded number in flight.
+    Use start_method="spawn" from multithreaded programs (forking those can deadlock)."""
     if jobs <= 1:
         if initializer:
             initializer(*initargs)
@@ -286,7 +287,7 @@ def ordered_map(fn, items, jobs: int, initializer=None, initargs=()):
         return
     import multiprocessing as mp
 
-    ctx = mp.get_context("fork" if sys.platform.startswith("linux") else "spawn")
+    ctx = mp.get_context(start_method or ("fork" if sys.platform.startswith("linux") else "spawn"))
     with ctx.Pool(jobs, initializer=initializer, initargs=initargs) as pool:
         pending: deque = deque()
         for it in items:

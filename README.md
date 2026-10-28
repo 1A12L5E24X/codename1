@@ -21,6 +21,8 @@ rendered in parallel.
 
 Around those engines:
 
+- **`dotfx app`** is the same engine in a browser interface, running locally.
+  Every terminal screen also has an **open in browser** button.
 - **`dotfx match`** measures a reference print and writes a preset that recreates it.
 - **`dotfx tune`** is a live terminal editor for every setting.
 - **`dotfx live`** runs a webcam or video stream through a preset in the terminal.
@@ -51,7 +53,8 @@ dotfx clip.mp4 -p comic                      # → clip.comic.mp4 (audio kept)
 dotfx clip.mov -p bitmap --width 480 -o loop.gif
 dotfx shots/ -p riso -o printed/             # a whole folder
 dotfx photo.jpg -p newsprint --preview-only  # just look, in the terminal
-dotfx tune photo.jpg -p newsprint            # adjust interactively
+dotfx app photo.jpg                          # the browser interface
+dotfx tune photo.jpg -p newsprint            # adjust interactively in the terminal
 dotfx match reference.jpg                    # → reference.toml, a preset that recreates it
 dotfx photo.jpg -p reference.toml            # … then use it on anything
 dotfx photo.jpg -p newsprint -o poster.svg   # vector dots (also .pdf)
@@ -147,6 +150,46 @@ cell = 7
 roughness = 0.5
 ```
 
+## Browser app
+
+![dotfx app](docs/app.png)
+
+```sh
+dotfx app                    # opens your browser
+dotfx app photo.jpg -p riso  # start from a file and a preset
+dotfx app --webcam
+```
+
+The browser app runs on your own machine and uses the same engine as the
+command line. It has:
+
+- **Preview:** full resolution, with zoom (scroll), pan (drag), 1:1 and 2×, and a
+  draggable before/after split.
+- **Looks:** every preset as a thumbnail rendered from your own image. ← → steps
+  through them.
+- **Settings:** every setting as sliders, switches, menus and color pickers,
+  grouped and searchable. Values changed from the preset are marked.
+- **Video:** a timeline to scrub through, and export to MP4, WebM or GIF with a
+  progress bar.
+- **Webcam:** a live, styled view, with snapshots at full camera resolution and
+  recording to WebM. Expect about 10 fps at 560 px wide: each frame makes a
+  round trip to Python.
+- **Match a reference:** drop in an image of the look you want and it's applied.
+- **Export:** PNG, JPEG, SVG and PDF at full resolution. Also *Save preset*
+  (`.toml`) and *Copy command* (the equivalent command line).
+
+Large images preview at a reduced size to stay quick. Exports always use the
+full size.
+
+It only listens on `127.0.0.1`, and every request needs the random key in the
+link it opens, so other web pages can't use it. `--port` picks a fixed port,
+and `--no-open` just prints the link.
+
+**From the terminal:** `tune` and `live` have an **open in browser** button
+(click it, or press `b`). It opens the browser app with the same file, preset
+and settings. After you quit the tuner, the browser app keeps running until
+Ctrl-C. `live` hands the camera over to the browser.
+
 ## Recreate a reference: `dotfx match`
 
 ```sh
@@ -213,6 +256,8 @@ responsive. The scale appears in the list like any other setting.
 | o | write the full-resolution image |
 | S | save the settings as a preset TOML |
 | c | show the equivalent command line |
+| b | open the same file and settings in the browser app |
+| mouse | click a setting to select it (click again to step it); click the key buttons; scroll |
 | q / esc | quit and print the command line |
 
 ## Options
@@ -353,7 +398,10 @@ image restyles instantly. The other keys:
 | `s` | snapshot (PNG; the preview frame flashes) |
 | `r` | record (MP4; a blinking ● REC timer shows while recording) |
 | `g` | switch between sharp and half-block preview |
+| `b` | open the browser app with the webcam (it takes over the camera) |
 | `q` | quit |
+
+The key buttons and the preset list can also be clicked with the mouse.
 
 Terminals without image support get a half-block preview, rendered straight at
 the terminal's resolution so the dots show as blocks. If they'd be too small to

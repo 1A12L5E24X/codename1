@@ -20,3 +20,6 @@ dotfx = "dotfx.cli:main"
 
 [tool.setuptools]
 packages = ["dotfx"]
+
+[tool.setuptools.package-data]
+dotfx = ["web/*"]

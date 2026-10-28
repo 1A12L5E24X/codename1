@@ -11,6 +11,7 @@ from .term import BOLD, RESET, fg, size
 
 COMMANDS = [
     ("render", "photo.jpg -p newsprint", "print photos and video (the default command)"),
+    ("app", "photo.jpg", "the same in your browser: sliders, gallery, webcam, export"),
     ("tune", "photo.jpg", "adjust every setting live, then export or save a preset"),
     ("live", "", "webcam or video through a preset, in the terminal"),
     ("match", "reference.jpg", "measure a print you like and write a preset for it"),

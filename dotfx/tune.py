@@ -58,7 +58,7 @@ EFFECT_GROUPS = {"halftone": "dither", "dither": "halftone"}  # group hidden for
 ZOOMS = [0, 4, 2, 1, 0.5]  # 0 = fit; otherwise image pixels per terminal pixel
 ZOOM_NAMES = ["fit", "¼", "½", "1:1", "2×"]
 
-from .ui import ACCENT, ACCENT_BG, BAD, CHANGED, GOOD, LINE, MUTED, SPIN, chips, logo  # noqa: E402
+from .ui import ACCENT, ACCENT_BG, BAD, CHANGED, GOOD, LINE, MUTED, SPIN, logo  # noqa: E402
 from . import ui  # noqa: E402
 
 KEYS_HELP = [
@@ -66,7 +66,8 @@ KEYS_HELP = [
     ("space", "toggle / next"), ("u", "reset to preset"), ("p P", "next / prev preset"),
     ("z", "zoom fit ¼ ½ 1:1 2×"), ("w a s d", "pan when zoomed"), (", .", "video: step frame"),
     ("< >", "video: jump 5 s"), ("o", "export image"), ("S", "save preset .toml"),
-    ("c", "show command line"), ("g", "sharp/blocky preview"), ("q esc", "quit"),
+    ("c", "show command line"), ("g", "sharp/blocky preview"), ("b", "open in the browser app"),
+    ("mouse", "click rows & chips, wheel"), ("q esc", "quit"),
 ]
 
 
@@ -316,6 +317,7 @@ class Tuner:
         top = max(0, min(sel_row - height // 2, len(rows) - height))
         lines = []
         name_w = 15
+        self._row_fields = [i if kind == "field" else None for kind, i in rows[top:top + height]]
         for kind, i in rows[top:top + height]:
             f = flist[i]
             if kind == "hdr":
@@ -369,9 +371,9 @@ class Tuner:
         flist = self.visible_fields()
         desc = flist[self.sel].metadata["help"] if flist else ""
         line1 = fit(f" {ITALIC}{fg(MUTED)}{desc}{RESET}", cols)
-        chip_list = [("↑↓", "select"), ("←→", "adjust"), ("enter", "edit"), ("p", "preset"), ("z", "zoom"),
-                 ("o", "export"), ("S", "save"), ("?", "help"), ("q", "quit")]
-        keys = chips(chip_list)
+        chip_list = [("b", "open in browser", "b", True), ("p", "preset", "p"), ("z", "zoom", "z"),
+                     ("o", "export", "o"), ("S", "save", "S"), ("?", "help", "?"), ("q", "quit", "q")]
+        keys, self._chips = ui.chips_layout(chip_list, x=2)
         with self._lock:
             err = self.error
         if err:
@@ -419,6 +421,7 @@ class Tuner:
         inner_h = body_h - 2
         for i, line in enumerate(self.settings_lines(panel - 2, inner_h)):
             out.append(f"\x1b[{top + 1 + i};2H{line}")
+        self._list_top, self._panel_w = top + 1, panel
 
         # Preview panel.
         px, pw = panel + 1, cols - panel
@@ -462,6 +465,7 @@ class Tuner:
 
         for i, line in enumerate(self.footer(cols)):
             out.append(f"\x1b[{rows - 1 + i};1H{line}")
+        self._footer_row = rows
         out.append("\x1b[?2026l")
         sys.stdout.write("".join(out))
         sys.stdout.flush()
@@ -488,8 +492,43 @@ class Tuner:
                 buf += k
 
     # -- main loop ------------------------------------------------------------
+    def click(self, k: str, kb: term.Keyboard) -> bool:
+        kind, x, y = k.split(":")
+        x, y = int(x), int(y)
+        if kind == "click" and y == getattr(self, "_footer_row", -1):
+            for x0, x1, action in getattr(self, "_chips", []):
+                if x0 <= x <= x1:
+                    return self.handle(action, kb)
+            return True
+        in_list = x <= getattr(self, "_panel_w", 0) and 0 <= y - getattr(self, "_list_top", 0) < len(
+            getattr(self, "_row_fields", []))
+        if kind.startswith("wheel"):
+            if in_list:
+                return self.handle("up" if kind == "wheelup" else "down", kb)
+            return self.handle("right" if kind == "wheelup" else "left", kb)  # wheel over preview: adjust
+        if in_list:
+            idx = self._row_fields[y - self._list_top]
+            if idx is not None:
+                if idx == self.sel:
+                    self.adjust(1)  # clicking the selected row steps/toggles it
+                self.sel = idx
+        return True
+
+    def open_browser(self) -> None:
+        from .app import open_browser, shared_app
+
+        s = replace(self.s, scale=1.0) if self.note else self.s  # the browser does its own preview sizing
+        app = shared_app()
+        self.browser_url = app.open_with(self.src, s, self.base)
+        if open_browser(self.browser_url):
+            self.set_status("opened in your browser (it stays available while dotfx runs)", "ok")
+        else:
+            self.set_status(f"open {self.browser_url}", "info")
+
     def handle(self, k: str, kb: term.Keyboard) -> bool:
         """Process one key; False to quit."""
+        if k.startswith(("click:", "wheelup:", "wheeldown:")):
+            return self.click(k, kb)
         flist = self.visible_fields()
         if k in ("q", "esc"):
             if self.help and k == "esc":
@@ -566,6 +605,8 @@ class Tuner:
             self.set_status(f"saved preset {self.save_path}", "ok")
         elif k == "c":
             self.set_status(self.command_line())
+        elif k == "b":
+            self.open_browser()
         if k in ("p", "P", "?", "z", "g"):
             sys.stdout.write("\x1b[2J")
             self._img_key = None
@@ -576,7 +617,7 @@ class Tuner:
         worker.start()
         sys.stdout.write("\x1b[?1049h\x1b[?25l\x1b[2J")
         try:
-            with term.Keyboard() as kb:
+            with term.Keyboard(mouse=True) as kb:
                 self.set_status(self.note)
                 self.request_render()
                 last_size = term.size()
@@ -597,6 +638,16 @@ class Tuner:
             sys.stdout.write("\x1b[?25h\x1b[?1049l")
             sys.stdout.flush()
         print(self.command_line())
+        if getattr(self, "browser_url", None):
+            from .app import hyperlink
+
+            print(f"\n  {logo('dotfx app')}  still running in your browser: {hyperlink(self.browser_url)}")
+            print(f"  {fg(MUTED)}ctrl-c to stop{RESET}")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n  stopped")
         return 0
 
 
