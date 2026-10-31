@@ -1,0 +1,20 @@
+# codename1 preset
+
+effect = "dither"
+mode = "mono"
+channel = "red"
+width = 1000
+height = 800
+scale = 1.003
+cells = 446
+contrast = 1.25
+gamma = 0.9
+ink = "#4a74c4"
+tint_start = 0.52
+tint_end = 0.67
+colors = 10
+pixel = 3.0
+cell_shape = "circle"
+dot_size = 1.1
+roughness = 0.05
+post_blur = 0.4
