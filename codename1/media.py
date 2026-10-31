@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -238,6 +239,9 @@ def open_writer(out: Path, width: int, height: int, fps: float, src: Path | None
         cmd += ["-map", "0:v", "-map", "1:a?", "-c:a", "libopus" if ext == ".webm" else "aac", "-b:a", "192k", "-shortest"]
     cmd += _encoder_args(out, opts, fps)
     cmd.append(str(out))
+    nice = shutil.which("nice")
+    if nice:
+        cmd = [nice, "-n", str(NICENESS)] + cmd
     return subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
@@ -276,8 +280,78 @@ class Progress:
         self.stream.flush()
 
 
-def ordered_map(fn, items, jobs: int, initializer=None, initargs=(), start_method: str | None = None):
+# Rendering one frame takes roughly this many bytes per output pixel at its peak
+# (measured: ~1.2 GB for a 4K frame with the heavier halftone presets).
+FRAME_BYTES_PER_PIXEL = 160
+# Background video work runs at this lower priority so the rest of the computer stays usable.
+NICENESS = 10
+
+
+def available_memory() -> int:
+    """Bytes of memory free for new work, or 0 if unknown."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        import ctypes
+
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong),
+                        ("avail", ctypes.c_ulonglong), ("pt", ctypes.c_ulonglong), ("pa", ctypes.c_ulonglong),
+                        ("vt", ctypes.c_ulonglong), ("va", ctypes.c_ulonglong), ("ve", ctypes.c_ulonglong)]
+
+        st = MemoryStatus()
+        st.length = ctypes.sizeof(st)
+        try:
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                return int(st.avail)
+        except (AttributeError, OSError):
+            return 0
+        return 0
+    try:
+        # macOS has no "available" figure here; assume about half the RAM can be used.
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") // 2
+    except (ValueError, OSError, AttributeError):
+        return 0
+
+
+def auto_jobs(pixels: int, requested: int = 0) -> int:
+    """Worker processes for rendering frames of `pixels` output pixels. An explicit
+    `requested` count wins; otherwise one core is left free and the count is capped so
+    the frames in flight fit in memory (big videos would otherwise push the machine into swap)."""
+    if requested > 0:
+        return requested
+    cores = os.cpu_count() or 1
+    jobs = max(1, cores - 1)
+    mem = available_memory()
+    if mem and pixels:
+        per_worker = pixels * FRAME_BYTES_PER_PIXEL
+        jobs = min(jobs, max(1, int(mem * 0.75 // per_worker)))
+    return jobs
+
+
+def lower_priority() -> None:
+    """Lower this process's CPU priority (no-op where unsupported)."""
+    try:
+        os.nice(NICENESS)
+    except (AttributeError, OSError):
+        pass
+
+
+def _low_priority_init(initializer, initargs) -> None:
+    lower_priority()
+    if initializer:
+        initializer(*initargs)
+
+
+def ordered_map(fn, items, jobs: int, initializer=None, initargs=(), start_method: str | None = None,
+                low_priority: bool = True):
     """Like map(), in order, across processes, keeping a bounded number in flight.
+    Workers run at lower CPU priority unless low_priority is False.
     Use start_method="spawn" from multithreaded programs (forking those can deadlock)."""
     if jobs <= 1:
         if initializer:
@@ -287,12 +361,14 @@ def ordered_map(fn, items, jobs: int, initializer=None, initargs=(), start_metho
         return
     import multiprocessing as mp
 
+    if low_priority:
+        initializer, initargs = _low_priority_init, (initializer, initargs)
     ctx = mp.get_context(start_method or ("fork" if sys.platform.startswith("linux") else "spawn"))
     with ctx.Pool(jobs, initializer=initializer, initargs=initargs) as pool:
         pending: deque = deque()
         for it in items:
             pending.append(pool.apply_async(fn, (it,)))
-            if len(pending) >= jobs * 2:
+            if len(pending) >= jobs + 2:
                 yield pending.popleft().get()
         while pending:
             yield pending.popleft().get()

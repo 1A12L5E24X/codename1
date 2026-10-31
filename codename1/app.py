@@ -190,7 +190,8 @@ def cli_command(name: str, s: Settings) -> str:
 def export_video(state: AppState, job: Job, media: Media, s: Settings, fmt: str) -> None:
     from .cli import _init_worker, _render_frame
     from .dither import KERNELS
-    from .media import VideoOptions, open_writer, ordered_map
+    from .media import VideoOptions, auto_jobs, open_writer, ordered_map
+    from .pipeline import target_size
 
     try:
         if s.effect == "dither" and s.algorithm in KERNELS and s.temporal == 0:
@@ -200,9 +201,9 @@ def export_video(state: AppState, job: Job, media: Media, s: Settings, fmt: str)
         job.path, job.mime = out, VIDEO_FORMATS[fmt]
         job.total = info.frames
         frames = read_frames(media.path, info)
-        import os
-
-        results = ordered_map(_render_frame, enumerate(frames), os.cpu_count() or 1, _init_worker, (s, False),
+        tw, th = target_size(info.width, info.height, s)
+        jobs = auto_jobs(max(tw * th, info.width * info.height))
+        results = ordered_map(_render_frame, enumerate(frames), jobs, _init_worker, (s, False),
                               start_method="spawn")
         writer = None
         for frame in results:

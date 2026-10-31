@@ -18,6 +18,7 @@ from .media import (
     MediaError,
     Progress,
     VideoOptions,
+    auto_jobs,
     is_video,
     load_image,
     open_writer,
@@ -123,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--encoder-preset", default="medium", help="x264/x265 speed preset [default: medium]")
     v.add_argument("--pix-fmt", default="", help="encoder pixel format, e.g. yuv444p keeps colored dots crisp")
     v.add_argument("--no-audio", dest="audio", action="store_false", help="drop the audio track")
-    v.add_argument("-j", "--jobs", type=int, default=0, help="worker processes (0 = all cores)")
+    v.add_argument("-j", "--jobs", type=int, default=0, help="worker processes (0 = auto: all cores but one, fewer if memory is tight)")
     add_setting_args(r)
 
     p = sub.add_parser("presets", help="list presets, or show one as TOML")
@@ -314,7 +315,10 @@ def render_video(src: Path, dst: Path, s: Settings, args) -> None:
                 break
             yield i, f
 
-    jobs = opts.jobs or os.cpu_count() or 1
+    from .pipeline import target_size
+
+    tw, th = target_size(info.width, info.height, s)
+    jobs = auto_jobs(max(tw * th, info.width * info.height) * (2 if args.compare else 1), opts.jobs)
     results = ordered_map(_render_frame, limited(), jobs, _init_worker, (s, args.compare))
     prog = Progress(total, f"{src.name} → {dst.name}") if not (args.quiet or args.preview_only) else None
     if prog:

@@ -639,3 +639,16 @@ def test_mouse_reports_parse():
     assert parse_mouse("\x1b[<0;12;40M\x1b[<0;12;40m") == "click:12:40"
     assert parse_mouse("\x1b[<64;5;6M") == "wheelup:5:6"
     assert parse_mouse("\x1b[<0;1;1m") == ""
+
+
+def test_auto_jobs_caps_by_memory(monkeypatch):
+    from codename1 import media
+
+    monkeypatch.setattr(media.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(media, "available_memory", lambda: 64 * 2**30)
+    assert media.auto_jobs(1920 * 1080) == 7  # leaves a core free
+    monkeypatch.setattr(media, "available_memory", lambda: 3 * 2**30)
+    assert media.auto_jobs(3840 * 2160) == 1  # 4K frames on a tight machine
+    assert media.auto_jobs(3840 * 2160, requested=5) == 5  # --jobs wins
+    monkeypatch.setattr(media, "available_memory", lambda: 0)
+    assert media.auto_jobs(3840 * 2160) == 7  # unknown memory: cores only

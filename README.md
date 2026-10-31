@@ -382,7 +382,9 @@ cells that flip per frame like this:
 Pass `--temporal 0` to keep the shimmer.
 
 Other flags: `--fps`, `--max-frames`, `--crf`, `--encoder-preset`, `--no-audio`,
-and `-j/--jobs` for the number of worker processes (default: all cores). Screen
+and `-j/--jobs` for the number of worker processes. By default video uses every
+core but one, uses fewer workers when big frames wouldn't fit in free memory, and runs
+at low priority so the computer stays usable while it renders. Screen
 geometry and static textures are cached between frames, so a 1080p halftone
 takes about 0.5–1 s per frame per core.
 
